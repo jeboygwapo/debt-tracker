@@ -77,7 +77,7 @@ def login():
         pwd  = os.environ.get("APP_PASSWORD", "changeme")
         if request.form["username"] == user and request.form["password"] == pwd:
             session["logged_in"] = True
-            return redirect(url_for("index"))
+            return redirect(url_for("dashboard"))
         error = "Invalid username or password."
     return render_template_string(LOGIN_TMPL, error=error)
 
@@ -443,18 +443,12 @@ def dashboard():
   </table>
 </div>
 
-{% if ai_html %}
-<div class="section" style="border:2px solid #1d4ed8">
+<div class="section" style="border:2px solid #1d4ed8" id="ai-section">
   <h3 style="color:#93c5fd">🤖 AI Analysis — GPT-4o-mini</h3>
-  <div style="font-size:.9rem;line-height:1.7">{{ ai_html|safe }}</div>
-  <p style="color:#475569;font-size:.75rem;margin-top:10px">Generated {{ today }} · Based on {{ latest }} balances</p>
+  <div id="ai-content" style="font-size:.9rem;line-height:1.7;color:#94a3b8">
+    <span id="ai-spinner">Analyzing your debts…</span>
+  </div>
 </div>
-{% else %}
-<div class="section" style="border:1px solid #334155">
-  <h3>🤖 AI Analysis</h3>
-  <p style="color:#94a3b8;font-size:.85rem">No OpenAI key set. <a href="/settings" style="color:#3b82f6">Add key in Settings →</a></p>
-</div>
-{% endif %}
 
 <script>
 const hL={{ hist_labels|tojson }}, hT={{ hist_totals|tojson }};
@@ -467,10 +461,13 @@ new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:allL,d
   {label:'Projected',data:pD,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.05)',borderDash:[5,5],tension:.3,fill:true,pointRadius:2}
 ]},options:{responsive:true,plugins:{legend:{labels:{color:'#94a3b8'}}},scales:{x:{ticks:{color:'#64748b',maxTicksLimit:12},grid:{color:'#1e293b'}},y:{ticks:{color:'#64748b',callback:v=>'₱'+v.toLocaleString()},grid:{color:'#334155'}}}}});
 new Chart(document.getElementById('donutChart'),{type:'doughnut',data:{labels:{{ donut_labels|tojson }},datasets:[{data:{{ donut_values|tojson }},backgroundColor:{{ donut_colors|tojson }},borderWidth:2,borderColor:'#1e293b'}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:11},padding:8}}}}}});
+fetch('/api/analysis').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('ai-content');
+  if(d.html){el.innerHTML=d.html+'<p style="color:#475569;font-size:.75rem;margin-top:10px">Based on {{ latest }} balances</p>';}
+  else{el.innerHTML='<p style="color:#f87171">'+d.error+'</p>';}
+}).catch(()=>{document.getElementById('ai-content').innerHTML='<p style="color:#f87171">Failed to load analysis.</p>';});
 </script>
 """ + BASE_FOOT
-
-    ai_html = get_ai_html(data)
 
     return render_template_string(tmpl,
         active="dashboard", latest=latest, entries=entries,
@@ -482,7 +479,19 @@ new Chart(document.getElementById('donutChart'),{type:'doughnut',data:{labels:{{
         hist_labels=hist_labels, hist_totals=hist_totals,
         proj_labels=proj_labels, proj_totals=proj_totals,
         donut_labels=donut_labels, donut_values=donut_values, donut_colors=donut_colors,
-        ai_html=ai_html, today=date.today())
+        today=date.today())
+
+# ── ai analysis api ───────────────────────────────────────────────────────────
+
+@app.route("/api/analysis")
+@login_required
+def api_analysis():
+    from flask import jsonify
+    data = load()
+    html = get_ai_html(data)
+    if html:
+        return jsonify({"html": html})
+    return jsonify({"error": "No OpenAI key set. <a href='/settings' style='color:#3b82f6'>Add key in Settings →</a>"})
 
 # ── add month ────────────────────────────────────────────────────────────────
 
