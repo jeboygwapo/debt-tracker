@@ -184,34 +184,49 @@ def compute_plan(data, strategy="avalanche"):
 
     return rows, payoffs
 
-def get_ai_html(data):
+def _ai_data_hash(data):
+    import hashlib
+    latest = latest_month(data)
+    entries = data["months"].get(latest, {})
+    blob = json.dumps({"month": latest, "entries": entries}, sort_keys=True)
+    return hashlib.md5(blob.encode()).hexdigest()
+
+def get_ai_html(data, force=False):
     load_env()
-    api_key = os.environ.get("OPENAI_API_KEY","")
-    if not api_key: return None
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if not api_key:
+        return None
+    current_hash = _ai_data_hash(data)
+    cache = data.get("ai_cache", {})
+    if not force and cache.get("data_hash") == current_hash and cache.get("html"):
+        return cache["html"]
     try:
         from openai import OpenAI
         latest  = latest_month(data)
         entries = data["months"][latest]
-        cfg     = data.get("income_config",{})
+        cfg     = data.get("income_config", {})
         summary = []
-        for name,e in entries.items():
-            bal = e.get("balance",0) or 0
-            if bal>0:
-                summary.append({"name":name,"balance":bal,
-                    "min_due":e.get("min_due",0) or 0,
-                    "apr_monthly_pct":data["debts"].get(name,{}).get("apr_monthly_pct",0),
-                    "type":data["debts"].get(name,{}).get("type","credit_card")})
-        context = {"month":latest,"debts":summary,
-            "monthly_budget_php":(cfg.get("monthly_sar",0)-cfg.get("expenses_sar",0))*cfg.get("sar_to_php",15),
-            "total_debt":sum(d["balance"] for d in summary)}
+        for name, e in entries.items():
+            bal = e.get("balance", 0) or 0
+            if bal > 0:
+                summary.append({"name": name, "balance": bal,
+                    "min_due": e.get("min_due", 0) or 0,
+                    "apr_monthly_pct": data["debts"].get(name, {}).get("apr_monthly_pct", 0),
+                    "type": data["debts"].get(name, {}).get("type", "credit_card")})
+        context = {"month": latest, "debts": summary,
+            "monthly_budget_php": (cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)) * cfg.get("sar_to_php", 15),
+            "total_debt": sum(d["balance"] for d in summary)}
         client = OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role":"system","content":"Personal finance advisor for Filipino OFW. Be direct, specific, use numbers. Format in clean HTML using <p><ul><li><strong> tags only."},
-                {"role":"user","content":f"Debt for {latest}:\n{json.dumps(context,indent=2)}\n\nGive: 1) Key observations (3 bullets) 2) Biggest risk 3) One action this month with exact peso amount 4) Projected savings following avalanche plan."}
+                {"role": "system", "content": "Personal finance advisor for Filipino OFW. Be direct, specific, use numbers. Format in clean HTML using <p><ul><li><strong> tags only."},
+                {"role": "user", "content": f"Debt for {latest}:\n{json.dumps(context, indent=2)}\n\nGive: 1) Key observations (3 bullets) 2) Biggest risk 3) One action this month with exact peso amount 4) Projected savings following avalanche plan."}
             ], max_tokens=600)
-        return resp.choices[0].message.content
+        html = resp.choices[0].message.content
+        data["ai_cache"] = {"data_hash": current_hash, "html": html, "generated_at": str(date.today())}
+        save(data)
+        return html
     except Exception as e:
         return f"<p style='color:red'>AI error: {e}</p>"
 
@@ -444,10 +459,14 @@ def dashboard():
 </div>
 
 <div class="section" style="border:2px solid #1d4ed8" id="ai-section">
-  <h3 style="color:#93c5fd">🤖 AI Analysis — GPT-4o-mini</h3>
-  <div id="ai-content" style="font-size:.9rem;line-height:1.7;color:#94a3b8">
-    <span id="ai-spinner">Analyzing your debts…</span>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <h3 style="color:#93c5fd">🤖 AI Analysis — GPT-4o-mini</h3>
+    <button id="ai-refresh-btn" onclick="loadAnalysis(true)" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:.8rem;cursor:pointer">↺ Refresh</button>
   </div>
+  <div id="ai-content" style="font-size:.9rem;line-height:1.7;color:#94a3b8">
+    <span id="ai-spinner">Loading analysis…</span>
+  </div>
+  <p id="ai-meta" style="color:#475569;font-size:.75rem;margin-top:10px"></p>
 </div>
 
 <script>
@@ -461,11 +480,27 @@ new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:allL,d
   {label:'Projected',data:pD,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.05)',borderDash:[5,5],tension:.3,fill:true,pointRadius:2}
 ]},options:{responsive:true,plugins:{legend:{labels:{color:'#94a3b8'}}},scales:{x:{ticks:{color:'#64748b',maxTicksLimit:12},grid:{color:'#1e293b'}},y:{ticks:{color:'#64748b',callback:v=>'₱'+v.toLocaleString()},grid:{color:'#334155'}}}}});
 new Chart(document.getElementById('donutChart'),{type:'doughnut',data:{labels:{{ donut_labels|tojson }},datasets:[{data:{{ donut_values|tojson }},backgroundColor:{{ donut_colors|tojson }},borderWidth:2,borderColor:'#1e293b'}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:11},padding:8}}}}}});
-fetch('/api/analysis').then(r=>r.json()).then(d=>{
+function loadAnalysis(force=false){
   const el=document.getElementById('ai-content');
-  if(d.html){el.innerHTML=d.html+'<p style="color:#475569;font-size:.75rem;margin-top:10px">Based on {{ latest }} balances</p>';}
-  else{el.innerHTML='<p style="color:#f87171">'+d.error+'</p>';}
-}).catch(()=>{document.getElementById('ai-content').innerHTML='<p style="color:#f87171">Failed to load analysis.</p>';});
+  const meta=document.getElementById('ai-meta');
+  const btn=document.getElementById('ai-refresh-btn');
+  el.innerHTML='<span style="color:#94a3b8">Analyzing your debts…</span>';
+  btn.disabled=true; btn.textContent='Loading…';
+  fetch('/api/analysis'+(force?'?force=1':'')).then(r=>r.json()).then(d=>{
+    if(d.html){
+      el.innerHTML=d.html;
+      meta.innerHTML='Based on {{ latest }} balances'+(d.cached?' · <span style="color:#22c55e">cached</span>':' · <span style="color:#f59e0b">fresh from OpenAI</span>');
+    } else {
+      el.innerHTML='<p style="color:#f87171">'+d.error+'</p>';
+      meta.innerHTML='';
+    }
+    btn.disabled=false; btn.textContent='↺ Refresh';
+  }).catch(()=>{
+    el.innerHTML='<p style="color:#f87171">Failed to load analysis.</p>';
+    btn.disabled=false; btn.textContent='↺ Refresh';
+  });
+}
+loadAnalysis();
 </script>
 """ + BASE_FOOT
 
@@ -487,10 +522,12 @@ fetch('/api/analysis').then(r=>r.json()).then(d=>{
 @login_required
 def api_analysis():
     from flask import jsonify
-    data = load()
-    html = get_ai_html(data)
+    data  = load()
+    force = request.args.get("force") == "1"
+    cached = not force and data.get("ai_cache", {}).get("data_hash") == _ai_data_hash(data)
+    html  = get_ai_html(data, force=force)
     if html:
-        return jsonify({"html": html})
+        return jsonify({"html": html, "cached": cached})
     return jsonify({"error": "No OpenAI key set. <a href='/settings' style='color:#3b82f6'>Add key in Settings →</a>"})
 
 # ── add month ────────────────────────────────────────────────────────────────
