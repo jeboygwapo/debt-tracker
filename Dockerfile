@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py tracker.py menu.py ./
+COPY static/ ./static/
 
 # Data dir — mount a PVC here in Kubernetes
 RUN mkdir -p /data
