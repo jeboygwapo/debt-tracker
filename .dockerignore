@@ -1,0 +1,10 @@
+.env
+debts.json
+dashboard.html
+statements-april/
+*.csv
+*.pyc
+__pycache__/
+.git/
+README.md
+MONTHLY_INPUT_GUIDE.md

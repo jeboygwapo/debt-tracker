@@ -9,8 +9,9 @@ from pathlib import Path
 from datetime import date
 from flask import Flask, render_template_string, request, redirect, url_for, jsonify
 
-DATA_FILE = Path(__file__).parent / "debts.json"
-ENV_FILE  = Path(__file__).parent / ".env"
+_data_dir = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
+DATA_FILE = _data_dir / "debts.json"
+ENV_FILE  = _data_dir / ".env"
 app = Flask(__name__)
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -721,4 +722,5 @@ if __name__ == "__main__":
     threading.Timer(1.0, open_browser).start()
     print("\n  Debt Tracker running → http://localhost:5050")
     print("  Press Ctrl+C to stop\n")
-    app.run(port=5050, debug=True, use_reloader=False)
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5050)), debug=debug, use_reloader=False)
