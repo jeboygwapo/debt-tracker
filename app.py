@@ -7,12 +7,84 @@ Opens browser automatically at http://localhost:5050
 import json, os, webbrowser, threading
 from pathlib import Path
 from datetime import date
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify
+from functools import wraps
+from flask import Flask, render_template_string, request, redirect, url_for, jsonify, session
 
 _data_dir = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 DATA_FILE = _data_dir / "debts.json"
 ENV_FILE  = _data_dir / ".env"
 app = Flask(__name__)
+
+# ── auth ───────────────────────────────────────────────────────────────────
+
+def load_env():
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+load_env()
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+LOGIN_TMPL = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debt Tracker — Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:#1e293b;border-radius:12px;padding:2.5rem;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+h2{font-size:1.4rem;margin-bottom:1.5rem;color:#f1f5f9;text-align:center}
+label{display:block;font-size:.8rem;color:#94a3b8;margin-bottom:.4rem}
+input{width:100%;padding:.65rem .9rem;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#f1f5f9;font-size:.95rem;margin-bottom:1rem}
+input:focus{outline:none;border-color:#6366f1}
+button{width:100%;padding:.75rem;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600}
+button:hover{background:#4f46e5}
+.err{color:#f87171;font-size:.85rem;margin-bottom:1rem;text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>💳 Debt Tracker</h2>
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  <form method="POST">
+    <label>Username</label>
+    <input name="username" type="text" autofocus autocomplete="username">
+    <label>Password</label>
+    <input name="password" type="password" autocomplete="current-password">
+    <button type="submit">Sign In</button>
+  </form>
+</div>
+</body>
+</html>"""
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        user = os.environ.get("APP_USER", "admin")
+        pwd  = os.environ.get("APP_PASSWORD", "changeme")
+        if request.form["username"] == user and request.form["password"] == pwd:
+            session["logged_in"] = True
+            return redirect(url_for("index"))
+        error = "Invalid username or password."
+    return render_template_string(LOGIN_TMPL, error=error)
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -23,13 +95,6 @@ def load():
 def save(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
-
-def load_env():
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text().splitlines():
-            if "=" in line and not line.startswith("#"):
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
 
 def latest_month(data):
     months = sorted(data["months"].keys())
@@ -212,6 +277,7 @@ input:focus,select:focus{outline:none;border-color:#3b82f6}
   <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
   <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
   <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">Settings</a>
+  <a href="/logout" style="margin-left:auto;color:#f87171">Logout</a>
 </nav>
 <div class="page">
 """
@@ -224,6 +290,7 @@ BASE_FOOT = """
 # ── dashboard ────────────────────────────────────────────────────────────────
 
 @app.route("/")
+@login_required
 def dashboard():
     data    = load()
     latest  = latest_month(data)
@@ -420,6 +487,7 @@ new Chart(document.getElementById('donutChart'),{type:'doughnut',data:{labels:{{
 # ── add month ────────────────────────────────────────────────────────────────
 
 @app.route("/add", methods=["GET","POST"])
+@login_required
 def add_month():
     data = load()
     debt_names = list(data["debts"].keys())
@@ -495,6 +563,7 @@ def add_month():
 # ── remittance ───────────────────────────────────────────────────────────────
 
 @app.route("/remit", methods=["GET","POST"])
+@login_required
 def remit():
     data   = load()
     cfg    = data.get("income_config",{})
@@ -603,6 +672,7 @@ def remit():
 # ── payoff plan ───────────────────────────────────────────────────────────────
 
 @app.route("/plan")
+@login_required
 def plan():
     data     = load()
     strategy = request.args.get("strategy","avalanche")
@@ -649,6 +719,7 @@ def plan():
 # ── settings ─────────────────────────────────────────────────────────────────
 
 @app.route("/settings", methods=["GET","POST"])
+@login_required
 def settings():
     data = load()
     cfg  = data.get("income_config",{})
