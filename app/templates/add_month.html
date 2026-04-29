@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_debt_fields.html" import statement_row, payment_row, tab_nav, tab_js %}
+{% block content %}
+
+<h2>Add Month</h2>
+{% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+
+{% if summary %}
+<div class="section" style="border:2px solid #854d0e;margin-bottom:24px">
+  <h3 style="color:#fde68a">✅ Saved {{ summary.month }} — Pay This Month</h3>
+  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">
+    Budget: <strong style="color:var(--text)">{{ summary.budget_php | peso }}</strong>
+    &nbsp;·&nbsp; Total allocated: <strong style="color:#22c55e">{{ summary.total_due | peso }}</strong>
+  </p>
+  <table class="table-card">
+    <thead>
+      <tr><th>Priority</th><th>Card / Loan</th><th>Balance</th><th>Min Due</th><th>Interest/mo</th><th>→ Pay</th></tr>
+    </thead>
+    <tbody>
+      {% for n, e in summary.entries.items() %}
+        {% if n in summary.fixed_pmts and (e.get('balance') or 0) > 0 %}
+        <tr>
+          <td data-label="Priority" style="color:var(--muted)">Fixed</td>
+          <td data-label="Card">{{ n }}</td>
+          <td data-label="Balance">{{ (e.get('balance') or 0) | peso }}</td>
+          <td data-label="Min Due">{{ (e.get('min_due') or 0) | peso }}</td>
+          <td data-label="Interest">—</td>
+          <td data-label="→ Pay"><strong style="color:#22c55e">{{ summary.pay_alloc.get(n, 0) | peso }}</strong></td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      {% for n, bal, mn, apr, interest in summary.cc_priority %}
+      {% set rank = loop.index %}
+      <tr>
+        <td data-label="Priority">{% if rank == 1 %}<span class="attack">ATTACK</span>{% else %}#{{ rank }}{% endif %}</td>
+        <td data-label="Card">{{ n }}</td>
+        <td data-label="Balance">{{ bal | peso }}</td>
+        <td data-label="Min Due">{{ mn | peso }}</td>
+        <td data-label="Interest" style="color:#ef4444">{{ interest | peso }}</td>
+        <td data-label="→ Pay">
+          <strong style="color:#22c55e">{{ summary.pay_alloc.get(n, 0) | peso }}</strong>
+          {% set extra = summary.pay_alloc.get(n, 0) - mn %}
+          {% if extra > 0.5 %}<span style="color:#f59e0b;font-size:.75rem"> (+{{ extra | peso }} extra)</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:14px">
+    <a href="/" class="btn btn-primary" style="text-decoration:none">Go to Dashboard →</a>
+  </div>
+</div>
+{% endif %}
+
+{{ tab_nav([('statement', '📋 Statement'), ('payments', '💳 Payments')]) }}
+
+<form method="POST">
+  <div id="panel-statement" class="tab-panel">
+    <div class="section">
+      <h3>Month</h3>
+      <div style="max-width:200px">
+        <label>Month (YYYY-MM)</label>
+        <input name="month" placeholder="2026-05" required pattern="\d{4}-\d{2}">
+      </div>
+    </div>
+    {% for name in debt_names %}
+      {{ statement_row(loop.index0, name, prev.get(name, {})) }}
+    {% endfor %}
+  </div>
+
+  <div id="panel-payments" class="tab-panel">
+    <div class="section" style="margin-bottom:20px">
+      <p style="color:var(--muted);font-size:.85rem">
+        💡 Fill <strong style="color:var(--text)">Statement</strong> tab first and save, then come back to record payments.
+        Balance and Min Due shown here update live as you type in the Statement tab.
+      </p>
+    </div>
+    {% for name in debt_names %}
+      {{ payment_row(loop.index0, name, prev.get(name, {}), today) }}
+    {% endfor %}
+  </div>
+
+  <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+    <button type="submit" class="btn btn-success">💾 Save</button>
+    <a href="/" class="btn-back">← Back</a>
+  </div>
+</form>
+
+{{ tab_js('statement', 'add_month') }}
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Payoff Plan</h2>
+
+<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+  <a href="/plan?strategy=avalanche" class="btn {{ 'btn-primary' if strategy == 'avalanche' else 'btn-back' }}">Avalanche</a>
+  <a href="/plan?strategy=snowball"  class="btn {{ 'btn-primary' if strategy == 'snowball'  else 'btn-back' }}">Snowball</a>
+</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+  {% for name, when in payoffs.items() %}
+  <div class="card">
+    <div class="label">{{ name.split('(')[0].strip() }}</div>
+    <div class="value green" style="font-size:1.1rem">{{ when }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="section">
+  <h3>Month-by-Month</h3>
+  <table class="table-card">
+    <thead><tr><th>Month</th><th>Budget</th><th>Total Debt</th><th>Paid Off</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td data-label="Month">{{ r.month }}</td>
+        <td data-label="Budget">{{ r.budget | peso }}</td>
+        <td data-label="Total Debt" style="color:{% if r.total < 200000 %}#22c55e{% elif r.total < 500000 %}#eab308{% else %}#ef4444{% endif %}">
+          {{ r.total | peso }}
+        </td>
+        <td data-label="Paid Off" style="color:#22c55e">{{ r.payoffs | join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

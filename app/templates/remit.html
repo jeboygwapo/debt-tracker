@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Remittance Planner</h2>
+
+<div class="section">
+  <h3>How much are you sending this month?</h3>
+  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label>SAR Amount</label>
+      <input name="sar" placeholder="5650" style="max-width:160px" value="{{ sar_input }}">
+    </div>
+    <div>
+      <label>Current Rate</label>
+      <input value="1 SAR = ₱{{ rate }}" disabled style="max-width:160px">
+    </div>
+    <button type="submit" class="btn btn-primary">Calculate →</button>
+    <a href="/settings" style="color:#3b82f6;font-size:.85rem;align-self:center">Change rate</a>
+  </form>
+</div>
+
+{% if result %}
+<div class="section" style="border:2px solid {% if result.php >= result.standard %}#166534{% else %}#7f1d1d{% endif %}">
+  <h3>Allocation Plan</h3>
+  <div style="display:flex;gap:24px;margin-bottom:16px;flex-wrap:wrap">
+    <div>
+      <span style="color:var(--muted);font-size:.8rem">Sending</span>
+      <div style="font-size:1.3rem;font-weight:700">{{ "{:,.0f}".format(result.sar) }} SAR</div>
+    </div>
+    <div>
+      <span style="color:var(--muted);font-size:.8rem">PHP Received</span>
+      <div class="green" style="font-size:1.3rem;font-weight:700">{{ result.php | peso }}</div>
+    </div>
+    {% if result.php >= result.standard %}
+    <div>
+      <span style="color:var(--muted);font-size:.8rem">Extra vs Plan</span>
+      <div class="green" style="font-size:1.3rem;font-weight:700">+{{ (result.php - result.standard) | peso }}</div>
+    </div>
+    {% else %}
+    <div>
+      <span style="color:var(--muted);font-size:.8rem">Short vs Plan</span>
+      <div class="red" style="font-size:1.3rem;font-weight:700">-{{ (result.standard - result.php) | peso }}</div>
+    </div>
+    {% endif %}
+  </div>
+  <table class="table-card">
+    <thead><tr><th>Card / Loan</th><th>Balance</th><th>Min Due</th><th>→ Pay</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for n, e in result.entries.items() %}
+        {% if n in result.fixed_pmts and (e.get('balance') or 0) > 0 %}
+        <tr>
+          <td data-label="Card">{{ n }}</td>
+          <td data-label="Balance">{{ (e.get('balance') or 0) | peso }}</td>
+          <td data-label="Min Due">{{ (e.get('min_due') or 0) | peso }}</td>
+          <td data-label="→ Pay"><strong style="color:#22c55e">{{ result.pay_alloc.get(n, 0) | peso }}</strong></td>
+          <td data-label="Note" style="color:var(--muted)">Fixed</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      {% for n, bal, mn, apr, interest in result.cc_priority %}
+      {% set alloc = result.pay_alloc.get(n, 0) %}
+      {% set extra = alloc - mn %}
+      <tr>
+        <td data-label="Card">{{ n }}{% if loop.first %} <span class="attack">ATTACK</span>{% endif %}</td>
+        <td data-label="Balance">{{ bal | peso }}</td>
+        <td data-label="Min Due">{{ mn | peso }}</td>
+        <td data-label="→ Pay"><strong style="color:#22c55e">{{ alloc | peso }}</strong></td>
+        <td data-label="Note">{% if extra > 0.5 %}<span style="color:#22c55e">+{{ extra | peso }} extra</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

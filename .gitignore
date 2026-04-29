@@ -1,6 +1,34 @@
+# env & secrets
 .env
-dashboard.html
+.env.*
+!.env.example
+
+# data (never commit personal financial data)
+debts.json
+*.json
+!package.json
+
+# python
 __pycache__/
 *.pyc
-statements-april/
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# statements & personal docs
+statements*/
+*.pdf
+*.PDF
 *.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

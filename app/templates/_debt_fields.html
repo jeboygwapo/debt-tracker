@@ -1,0 +1,113 @@
+{% macro statement_row(i, name, e) %}
+<div class="card-section">
+  <h4>{{ name }}</h4>
+  <div class="row">
+    <div>
+      <label>Balance (Statement Amount)</label>
+      <input name="d_{{ i }}_balance" id="bal_{{ i }}"
+             value="{{ e.get('balance', '') if e.get('balance') else '' }}" placeholder="0.00">
+    </div>
+    <div>
+      <label>Minimum Due</label>
+      <input name="d_{{ i }}_min_due" id="mn_{{ i }}"
+             value="{{ e.get('min_due', '') if e.get('min_due') else '' }}" placeholder="0.00">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Due Date</label>
+      <input name="d_{{ i }}_due_date"
+             value="{{ e.get('due_date', '') }}" placeholder="May 12">
+    </div>
+    <div>
+      <label>Note</label>
+      <input name="d_{{ i }}_note"
+             value="{{ e.get('note', '') }}" placeholder="e.g. 16/36">
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro payment_row(i, name, e, today='') %}
+<div class="card-section">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;flex-wrap:wrap;gap:4px">
+    <h4 style="margin-bottom:0">{{ name }}</h4>
+    <span style="font-size:.8rem;color:var(--faint)">
+      Balance <strong style="color:var(--text)" id="ref_bal_{{ i }}">{{ (e.get('balance') or 0) | peso }}</strong>
+      &nbsp;·&nbsp; Min <strong style="color:#fde68a" id="ref_mn_{{ i }}">{{ (e.get('min_due') or 0) | peso }}</strong>
+    </span>
+  </div>
+  <div class="row">
+    <div>
+      <label>
+        Payment Made
+        <button type="button" class="qbtn" onclick="copyMin({{ i }})">= Min</button>
+        <button type="button" class="qbtn" onclick="setField('d_{{ i }}_payment','0')">= 0</button>
+      </label>
+      <input name="d_{{ i }}_payment" id="pmt_{{ i }}"
+             value="{{ e.get('payment', '') }}" placeholder="0.00">
+    </div>
+    <div>
+      <label>
+        Paid On
+        <button type="button" class="qbtn qbtn-green" onclick="setField('d_{{ i }}_paid_on','{{ today }}')">Today</button>
+        <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Good')">Good</button>
+        <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Ready')">Ready</button>
+        <button type="button" class="qbtn qbtn-red"   onclick="setField('d_{{ i }}_paid_on','')">Clear</button>
+      </label>
+      <input name="d_{{ i }}_paid_on" id="d_{{ i }}_paid_on"
+             value="{{ e.get('paid_on', '') }}" placeholder="leave blank if unpaid">
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+
+{% macro tab_nav(tabs) %}
+<div class="tab-nav" style="display:flex;gap:4px;margin-bottom:20px;background:var(--surface);padding:6px;border-radius:10px;width:fit-content;border:1px solid var(--border)">
+  {% for id, label in tabs %}
+  <button type="button" id="tabbtn-{{ id }}"
+          onclick="switchTab('{{ id }}')"
+          class="tab-btn {% if loop.first %}tab-active{% endif %}">
+    {{ label }}
+  </button>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+
+{% macro tab_js(default_tab, page_key) %}
+<script>
+function setField(name, val) {
+  document.querySelector('[name="' + name + '"]').value = val;
+}
+function copyMin(i) {
+  const mn = document.getElementById('mn_' + i);
+  document.getElementById('pmt_' + i).value = mn ? mn.value : '';
+}
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+  document.getElementById('panel-' + id).style.display = '';
+  document.getElementById('tabbtn-' + id).classList.add('tab-active');
+  localStorage.setItem('{{ page_key }}_tab', id);
+  syncPaymentRefs();
+}
+function syncPaymentRefs() {
+  document.querySelectorAll('[id^="bal_"]').forEach(el => {
+    const i = el.id.split('_')[1];
+    const ref = document.getElementById('ref_bal_' + i);
+    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+  });
+  document.querySelectorAll('[id^="mn_"]').forEach(el => {
+    const i = el.id.split('_')[1];
+    const ref = document.getElementById('ref_mn_' + i);
+    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+  });
+}
+document.querySelectorAll('[id^="bal_"],[id^="mn_"]').forEach(el => el.addEventListener('input', syncPaymentRefs));
+const saved = localStorage.getItem('{{ page_key }}_tab') || '{{ default_tab }}';
+switchTab(saved);
+</script>
+{% endmacro %}

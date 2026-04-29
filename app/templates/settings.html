@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Settings</h2>
+{% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+
+<div class="section">
+  <h3>SAR → PHP Rate</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Check Wise or Western Union for current rate before updating.</p>
+  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="action" value="rate">
+    <div>
+      <label>Current: 1 SAR = ₱{{ cfg.get('sar_to_php', 15.0) }}</label>
+      <input name="rate" placeholder="{{ cfg.get('sar_to_php', 15.0) }}" style="max-width:160px">
+    </div>
+    <button type="submit" class="btn btn-primary">Update Rate</button>
+  </form>
+</div>
+
+<div class="section">
+  <h3>OpenAI API Key</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Required for AI analysis. Key stored locally in .env file.</p>
+  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="action" value="apikey">
+    <div style="flex:1;min-width:260px">
+      <label>API Key (sk-...)</label>
+      <input name="apikey" type="password" placeholder="sk-...">
+    </div>
+    <button type="submit" class="btn btn-primary">Save Key</button>
+  </form>
+</div>
+
+<div class="section">
+  <h3>Change Password</h3>
+  <form method="POST" style="display:flex;flex-direction:column;gap:12px;max-width:360px">
+    <input type="hidden" name="action" value="password">
+    <div>
+      <label>Current Password</label>
+      <input name="current_password" type="password" autocomplete="current-password">
+    </div>
+    <div>
+      <label>New Password (min 12 chars)</label>
+      <input name="new_password" type="password" autocomplete="new-password">
+    </div>
+    <div>
+      <label>Confirm New Password</label>
+      <input name="confirm_password" type="password" autocomplete="new-password">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary" style="width:fit-content">Update Password</button>
+    </div>
+  </form>
+</div>
+
+<div class="section">
+  <h3>Income Config</h3>
+  <table style="max-width:400px">
+    <tr>
+      <td style="color:var(--muted)">Monthly Salary</td>
+      <td>{{ cfg.get('monthly_sar', 0) }} SAR</td>
+    </tr>
+    <tr>
+      <td style="color:var(--muted)">Saudi Expenses</td>
+      <td>{{ cfg.get('expenses_sar', 0) }} SAR</td>
+    </tr>
+    <tr>
+      <td style="color:var(--muted)">Phone (ends {{ cfg.get('phone', {}).get('ends', '—') }})</td>
+      <td>{{ cfg.get('phone', {}).get('monthly_sar', 0) }} SAR</td>
+    </tr>
+    <tr>
+      <td style="color:var(--muted)">Net Remittable</td>
+      <td><strong>{{ cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0) }} SAR</strong></td>
+    </tr>
+  </table>
+</div>
+{% endblock %}
