@@ -78,10 +78,15 @@
 
 <!-- Debt List -->
 {% if debts %}
+<form method="POST" action="/debts/reorder" id="reorder-form">
+  <input type="hidden" name="order" id="order-input" value="{{ debts | map(attribute='id') | join(',') }}">
+</form>
+
 <div class="section" style="padding:0;overflow:hidden">
-  <table class="table-card" style="margin:0">
+  <table class="table-card" style="margin:0" id="debts-table">
     <thead>
       <tr>
+        <th style="width:60px">Order</th>
         <th>Name</th>
         <th>Type</th>
         <th>APR %/mo</th>
@@ -90,9 +95,13 @@
         <th></th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="debts-tbody">
     {% for d in debts %}
-    <tr>
+    <tr data-id="{{ d.id }}">
+      <td data-label="Order" style="white-space:nowrap">
+        <button type="button" class="qbtn" onclick="moveRow(this, -1)" title="Move up">↑</button>
+        <button type="button" class="qbtn" onclick="moveRow(this, 1)" title="Move down">↓</button>
+      </td>
       <td data-label="Name"><strong>{{ d.name }}</strong></td>
       <td data-label="Type">
         {% if d.type == 'credit_card' %}
@@ -125,6 +134,14 @@
     </tbody>
   </table>
 </div>
+
+<div id="save-order-bar" style="display:none;position:sticky;bottom:16px;text-align:center;margin-top:12px">
+  <button type="button" class="btn btn-success" onclick="saveOrder()" style="box-shadow:0 4px 16px rgba(0,0,0,.4)">
+    Save Order
+  </button>
+  <button type="button" class="btn btn-back" onclick="cancelOrder()" style="margin-left:8px">Cancel</button>
+</div>
+
 {% else %}
 <div class="section" style="text-align:center;padding:40px;color:var(--muted)">
   <p style="font-size:1rem;margin-bottom:8px">No debts added yet.</p>
@@ -137,6 +154,36 @@ function toggleFixed(suffix) {
   const cb = document.getElementById('is-fixed-' + suffix);
   const fields = document.getElementById('fixed-fields-' + suffix);
   fields.style.display = cb.checked ? 'block' : 'none';
+}
+
+const _originalOrder = document.getElementById('order-input')?.value || '';
+
+function moveRow(btn, dir) {
+  const row = btn.closest('tr');
+  const tbody = row.parentElement;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const idx = rows.indexOf(row);
+  const target = idx + dir;
+  if (target < 0 || target >= rows.length) return;
+  if (dir === -1) tbody.insertBefore(row, rows[target]);
+  else tbody.insertBefore(rows[target], row);
+  updateOrderInput();
+}
+
+function updateOrderInput() {
+  const ids = Array.from(document.querySelectorAll('#debts-tbody tr'))
+    .map(r => r.dataset.id).join(',');
+  document.getElementById('order-input').value = ids;
+  document.getElementById('save-order-bar').style.display =
+    ids !== _originalOrder ? 'block' : 'none';
+}
+
+function saveOrder() {
+  document.getElementById('reorder-form').submit();
+}
+
+function cancelOrder() {
+  location.reload();
 }
 </script>
 {% endblock %}

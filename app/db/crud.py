@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -89,6 +89,16 @@ async def update_debt(db: AsyncSession, debt: Debt, **kwargs) -> Debt:
     await db.commit()
     await db.refresh(debt)
     return debt
+
+
+async def reorder_debts(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
+    for i, debt_id in enumerate(ordered_ids):
+        await db.execute(
+            update(Debt)
+            .where(Debt.id == debt_id, Debt.user_id == user_id)
+            .values(sort_order=i)
+        )
+    await db.commit()
 
 
 async def delete_debt(db: AsyncSession, debt_id: int, user_id: int) -> None:
