@@ -29,7 +29,6 @@ router = APIRouter()
 
 _PALETTE = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e"]
 
-VALID_DEBT_TYPES = {"credit_card", "personal_loan", "other"}
 
 
 def _redirect_login():

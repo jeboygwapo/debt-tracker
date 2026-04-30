@@ -61,7 +61,10 @@ class Settings:
 
     @property
     def secret_key(self) -> str:
-        return os.environ.get("SECRET_KEY", "dev-secret-change-me")
+        key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+        if os.environ.get("APP_ENV", "development").lower() == "production" and key == "dev-secret-change-me":
+            raise RuntimeError("SECRET_KEY must be set in production (APP_ENV=production)")
+        return key
 
     @property
     def app_user(self) -> str:
