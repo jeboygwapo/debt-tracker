@@ -65,10 +65,8 @@ class Settings:
 
     @property
     def database_url(self) -> str:
-        return os.environ.get(
-            "DATABASE_URL",
-            "postgresql+asyncpg://debttracker:debttracker@localhost:5432/debttracker",
-        )
+        default = f"sqlite+aiosqlite:///{self.data_dir / 'debttracker.db'}"
+        return os.environ.get("DATABASE_URL", default)
 
     @property
     def openai_api_key(self) -> str:

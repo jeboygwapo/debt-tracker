@@ -106,10 +106,34 @@ Update after any change to add/edit month flow, debt fields, or income config. D
 - `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
 - `password` — verify current, enforce 12-char min, update hash
 
+## DB Dialect Notes
+- `income_config` uses generic `sa.JSON` (not `JSONB`) — works SQLite + Postgres
+- `created_at` uses Python-side `default=datetime.utcnow` (not `server_default=func.now()`) — `now()` is Postgres-only
+- Alembic migration uses `CURRENT_TIMESTAMP` (ANSI SQL, works both dialects)
+- Dev default DB: `sqlite+aiosqlite:///debttracker.db` — set `DATABASE_URL` env var for Postgres
+
+## Init / First Run
+```
+python scripts/init_db.py
+```
+- Generates `SECRET_KEY` in `.env` if missing
+- Runs `alembic upgrade head`
+- Prompts for admin username + password if no users exist
+- Idempotent — safe to re-run
+
+## Dockerfile Security
+- Base: `python:3.13-slim`
+- Non-root user: `appuser` (uid 1001)
+- `/data` owned by `appuser` — mount PVC here
+- `--no-cache-dir` on pip install
+- Drop privileges before `CMD`
+
 ## Current State (as of 2026-04-30)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
 - Income config fully editable in Settings (salary, expenses, phone installment)
 - Multi-user: DB layer ready (all tables scoped by user_id), no registration UI yet
 - Admin routes: not built
-- Next: first-run/init script → data migration from debts.json → admin user management
+- First-run init: `scripts/init_db.py` — migrations + admin seed, idempotent
+- Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
+- Next: data migration from debts.json → admin user management
