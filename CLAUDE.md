@@ -141,7 +141,7 @@ python scripts/init_db.py
 
 ## CI/CD (GitHub Actions)
 - `.github/workflows/ci.yml` — pytest on every push/PR, all branches
-- `.github/workflows/cd.yml` — Docker build + push to GHCR on merge to main; tags: `sha-<sha>`, `latest`
+- `.github/workflows/cd.yml` — Docker build + push to GHCR on main merge; tags: `sha-<sha>`, `latest`
 - Health check: `GET /api/healthz` — DB ping, returns `{"status":"ok"}` or 503
 
 ## Registration
