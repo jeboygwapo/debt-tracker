@@ -71,6 +71,10 @@ def compute_plan(
     data: Dict,
     strategy: str = "avalanche",
 ) -> Tuple[List[Dict], Dict[str, str]]:
+    latest = latest_month(data)
+    if not latest:
+        return [], {}
+
     cfg = data.get("income_config", {})
     fixed_pmts = data.get("fixed_payments", {})
     sar_php = cfg.get("sar_to_php", 15.0)
@@ -78,7 +82,6 @@ def compute_plan(
     phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
     phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-    latest = latest_month(data)
     entries = data["months"].get(latest, {})
 
     balances = {n: (e.get("balance", 0) or 0) for n, e in entries.items()}
