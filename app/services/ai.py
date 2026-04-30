@@ -1,36 +1,44 @@
 import hashlib
 import json
-from datetime import date
 from typing import Optional
 
-from ..config import settings, load_env_file
-from ..storage import save
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..config import load_env_file, settings
 from .planner import latest_month
 
 
-def _compute_hash(data: dict) -> str:
+def compute_hash(data: dict) -> str:
     latest = latest_month(data)
     entries = data["months"].get(latest, {})
     blob = json.dumps({"month": latest, "entries": entries}, sort_keys=True)
     return hashlib.md5(blob.encode()).hexdigest()
 
 
-def get_analysis(data: dict, force: bool = False) -> Optional[str]:
+async def get_analysis(
+    data: dict,
+    db: AsyncSession,
+    user_id: int,
+    force: bool = False,
+) -> Optional[str]:
+    from ..db.crud import get_ai_cache, set_ai_cache
+
     load_env_file(settings.env_file)
     api_key = settings.openai_api_key
     if not api_key:
         return None
 
-    current_hash = _compute_hash(data)
-    cache = data.get("ai_cache", {})
-    if not force and cache.get("data_hash") == current_hash and cache.get("html"):
-        return cache["html"]
+    current_hash = compute_hash(data)
+    if not force:
+        cache = await get_ai_cache(db, user_id)
+        if cache and cache.data_hash == current_hash and cache.html:
+            return cache.html
 
     try:
         from openai import OpenAI
 
         latest = latest_month(data)
-        entries = data["months"][latest]
+        entries = data["months"].get(latest, {})
         cfg = data.get("income_config", {})
 
         summary = [
@@ -73,7 +81,8 @@ def get_analysis(data: dict, force: bool = False) -> Optional[str]:
                     "role": "user",
                     "content": (
                         f"Debt for {latest}:\n{json.dumps(context, indent=2)}\n\n"
-                        "Give: 1) Key observations (3 bullets) including which debts were paid and if payment_made covers min_due "
+                        "Give: 1) Key observations (3 bullets) including which debts were paid "
+                        "and if payment_made covers min_due "
                         "2) Biggest risk 3) One action this month with exact peso amount "
                         "4) Any unpaid or underpaid debts that need attention "
                         "5) Projected savings following avalanche plan."
@@ -83,12 +92,8 @@ def get_analysis(data: dict, force: bool = False) -> Optional[str]:
             max_tokens=600,
         )
         html = resp.choices[0].message.content
-        data["ai_cache"] = {
-            "data_hash": current_hash,
-            "html": html,
-            "generated_at": str(date.today()),
-        }
-        save(data)
+        await set_ai_cache(db, user_id, current_hash, html)
         return html
+
     except Exception as e:
         return f"<p style='color:red'>AI error: {e}</p>"
