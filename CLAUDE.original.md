@@ -103,7 +103,7 @@ python -m pytest tests/ -v
 - Stack: `pytest` + `httpx.AsyncClient` + `anyio`
 - `tests/conftest.py` — isolated SQLite test DB (`tests/test_debttracker.db`), auto-created and torn down
 - DB overridden via `os.environ["DATABASE_URL"]` before app import — must stay at top of conftest
-- Seed: 1 admin user + 3 debts per session
+- Seed: 1 admin user + 3 debts created per session
 - 25 tests: auth, pages, debts CRUD+reorder, admin user management
 - Test DB excluded from Claude context via `.claudeignore`
 
@@ -139,26 +139,15 @@ python scripts/init_db.py
 - `--no-cache-dir` on pip install
 - Drop privileges before `CMD`
 
-## CI/CD (GitHub Actions)
-- `.github/workflows/ci.yml` — pytest on every push/PR, all branches
-- `.github/workflows/cd.yml` — Docker build + push to GHCR on merge to main; tags: `sha-<sha>`, `latest`
-- Health check: `GET /api/healthz` — DB ping, returns `{"status":"ok"}` or 503
-
-## Registration
-- `GET/POST /register` — self-signup, gated by `ALLOW_REGISTRATION=true` env var (default: false)
-- Redirect to `/login` when disabled; redirect new user to `/debts` on success
-- Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
-- Login page shows "Register" link only when `allow_registration=True` passed in context
-
 ## Current State (as of 2026-04-30)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
 - Income config fully editable in Settings (salary, expenses, phone installment)
-- Multi-user: registration via `/register` (gated by ALLOW_REGISTRATION env var)
+- Multi-user: DB layer ready (all tables scoped by user_id), no registration UI yet
+- Admin routes: not built
 - First-run init: `scripts/init_db.py` — migrations + admin seed, idempotent
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
-- GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
-- Next: merge feature/multi-user-registration → develop → main
+- Test suite: 25 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
+- Next: merge all branches → develop → multi-user registration
