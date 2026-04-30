@@ -5,6 +5,11 @@ python-multipart>=0.0.9
 openai>=1.0.0
 itsdangerous>=2.1.0
 
+# testing
+pytest>=9.0.0
+httpx>=0.28.0
+anyio>=4.0.0
+
 # database
 sqlalchemy>=2.0.0
 alembic>=1.13.0
