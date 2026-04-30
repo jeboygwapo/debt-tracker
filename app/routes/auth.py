@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import hash_password, settings
+from ..config import verify_password, settings
 from ..db.base import get_db
 from ..db.crud import create_user, get_user_by_username
 from ..templating import templates
@@ -27,7 +27,7 @@ async def login_post(request: Request, db: AsyncSession = Depends(get_db)):
     password = str(form.get("password", ""))
 
     user = await get_user_by_username(db, username)
-    if user and user.password_hash == hash_password(password):
+    if user and verify_password(password, user.password_hash):
         request.session["user_id"] = user.id
         request.session["username"] = user.username
         request.session["is_admin"] = user.is_admin
