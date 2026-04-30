@@ -46,10 +46,25 @@ python -m pytest tests/ -v
 
 Uses an isolated SQLite test DB — no external dependencies required.
 
+## Deploy to Fly.io
+
+Install flyctl, then:
+
+```
+flyctl auth login
+flyctl launch --no-deploy  # first time only
+flyctl postgres create      # attach managed Postgres
+flyctl secrets set SECRET_KEY=<generated> APP_ENV=production DATABASE_URL=<postgres-url>
+flyctl deploy
+```
+
+See `fly.env.example` for the full list of secrets to set.
+
 ## CI/CD
 
 - **CI** (`.github/workflows/ci.yml`): runs `pytest` on every push and pull request, all branches.
 - **CD** (`.github/workflows/cd.yml`): builds Docker image and pushes to GHCR on merge to `main`. Tags: `sha-<sha>`, `latest`.
+- **Fly deploy** (`.github/workflows/deploy-fly.yml`): deploys to `jayvee-debt-tracker.fly.dev` after CI passes on `main`.
 
 ## Monthly Usage
 

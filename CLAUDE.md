@@ -150,6 +150,14 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
+## Deploy Target
+- Platform: Fly.io (`jayvee-debt-tracker.fly.dev`)
+- Region: Singapore (`sin`)
+- Postgres: Fly Managed Postgres
+- Config: `fly.toml` at project root
+- Secrets managed via `flyctl secrets set` (see `fly.env.example`)
+- Deploy pipeline: `.github/workflows/deploy-fly.yml` — triggers after CI passes on `main`
+
 ## Current State (as of 2026-04-30)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
