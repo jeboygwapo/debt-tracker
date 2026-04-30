@@ -1,6 +1,7 @@
-import hashlib
 import os
 from pathlib import Path
+
+import bcrypt
 
 
 def load_env_file(env_path: Path) -> None:
@@ -13,7 +14,14 @@ def load_env_file(env_path: Path) -> None:
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode(), password_hash.encode())
+    except Exception:
+        return False
 
 
 def _migrate_plaintext_password(env_path: Path) -> None:

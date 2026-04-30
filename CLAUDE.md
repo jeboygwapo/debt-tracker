@@ -15,7 +15,7 @@ Filipino OFW context: income SAR, debts PHP, avalanche/snowball payoff planning.
 ```
 app/
   __init__.py        # create_app(), router registration
-  config.py          # settings, env loading, load_env_file(), hash_password(), save_env_value()
+  config.py          # settings, env loading, load_env_file(), hash_password(), verify_password(), save_env_value()
   dependencies.py    # get_current_user(), NotAuthenticated, require_admin
   templating.py      # Jinja2 env setup
   storage.py         # legacy shim (unused, keep for reference)
