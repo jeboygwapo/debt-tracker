@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.txt 2>/dev/null 
     pip install --no-cache-dir -r requirements.txt
 
 COPY main.py ./
+COPY start.sh ./
 COPY app/ ./app/
 COPY static/ ./static/
 COPY alembic/ ./alembic/
@@ -28,4 +29,4 @@ USER appuser
 EXPOSE 5050
 
 # Explicit host binding — never 0.0.0.0 in prod without a reverse proxy
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5050", "--no-access-log"]
+CMD ["/bin/sh", "/app/start.sh"]
