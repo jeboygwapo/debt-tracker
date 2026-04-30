@@ -72,5 +72,6 @@ class AiCache(Base):
     data_hash: Mapped[str] = mapped_column(String(32))
     html: Mapped[str] = mapped_column(Text)
     generated_at: Mapped[date] = mapped_column(Date)
+    daily_count: Mapped[int] = mapped_column(default=0)
 
     user: Mapped["User"] = relationship(back_populates="ai_cache")

@@ -92,6 +92,10 @@ class Settings:
         return os.environ.get("OPENAI_API_KEY", "")
 
     @property
+    def ai_daily_limit(self) -> int:
+        return int(os.environ.get("AI_DAILY_LIMIT", 3))
+
+    @property
     def allow_registration(self) -> bool:
         return os.environ.get("ALLOW_REGISTRATION", "false").lower() == "true"
 

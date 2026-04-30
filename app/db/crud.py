@@ -186,17 +186,29 @@ async def set_ai_cache(
     db: AsyncSession, user_id: int, data_hash: str, html: str
 ) -> None:
     from datetime import date
+    today = date.today()
     cache = await get_ai_cache(db, user_id)
     if cache:
+        new_count = 1 if cache.generated_at != today else cache.daily_count + 1
         cache.data_hash = data_hash
         cache.html = html
-        cache.generated_at = date.today()
+        cache.generated_at = today
+        cache.daily_count = new_count
     else:
         cache = AiCache(
             user_id=user_id,
             data_hash=data_hash,
             html=html,
-            generated_at=date.today(),
+            generated_at=today,
+            daily_count=1,
         )
         db.add(cache)
     await db.commit()
+
+
+async def get_ai_daily_count(db: AsyncSession, user_id: int) -> int:
+    from datetime import date
+    cache = await get_ai_cache(db, user_id)
+    if not cache or cache.generated_at != date.today():
+        return 0
+    return cache.daily_count
