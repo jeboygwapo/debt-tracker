@@ -80,6 +80,11 @@ class Settings:
         url = os.environ.get("DATABASE_URL", default)
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if "asyncpg" in url and "sslmode=" in url:
+            from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+            parsed = urlparse(url)
+            params = {k: v for k, v in parse_qs(parsed.query).items() if k != "sslmode"}
+            url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
         return url
 
     @property
