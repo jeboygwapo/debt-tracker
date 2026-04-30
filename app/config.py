@@ -64,6 +64,13 @@ class Settings:
         return os.environ.get("APP_PASSWORD_HASH", "")
 
     @property
+    def database_url(self) -> str:
+        return os.environ.get(
+            "DATABASE_URL",
+            "postgresql+asyncpg://debttracker:debttracker@localhost:5432/debttracker",
+        )
+
+    @property
     def openai_api_key(self) -> str:
         return os.environ.get("OPENAI_API_KEY", "")
 

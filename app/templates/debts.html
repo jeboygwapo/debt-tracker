@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+  <h2 style="margin:0">My Debts / Cards</h2>
+  <button class="btn btn-primary" onclick="document.getElementById('add-form').style.display='block';this.style.display='none'">+ Add Debt</button>
+</div>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if msg_type == 'error' else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<!-- Add Form (hidden by default) -->
+<div id="add-form" style="display:none" class="section">
+  <h3>New Debt</h3>
+  <form method="POST" action="/debts">
+    <div class="row">
+      <div>
+        <label>Name *</label>
+        <input name="name" placeholder="BDO Credit Card" required>
+      </div>
+      <div>
+        <label>Type</label>
+        <select name="type">
+          <option value="credit_card">Credit Card</option>
+          <option value="personal_loan">Personal Loan</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Monthly APR %</label>
+        <input name="apr_monthly_pct" type="number" step="0.01" placeholder="3.5" value="0">
+      </div>
+      <div>
+        <label>Note (optional)</label>
+        <input name="note" placeholder="e.g. Installment until 2026-12">
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" id="is-fixed-add" name="is_fixed" value="1" onchange="toggleFixed('add')">
+        <span style="font-size:.85rem;color:var(--text2)">Fixed monthly payment (loan / installment)</span>
+      </label>
+    </div>
+
+    <div id="fixed-fields-add" style="display:none">
+      <div class="row">
+        <div>
+          <label>Fixed Monthly Amount (₱)</label>
+          <input name="fixed_monthly" type="number" step="0.01" placeholder="5000">
+        </div>
+        <div>
+          <label>Ends (YYYY-MM)</label>
+          <input name="fixed_ends" placeholder="2027-06" pattern="\d{4}-\d{2}">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Reduced Amount After Threshold (₱)</label>
+          <input name="fixed_reduced_monthly" type="number" step="0.01" placeholder="optional">
+        </div>
+        <div>
+          <label>Balance Threshold for Reduced Amount (₱)</label>
+          <input name="fixed_reduced_threshold" type="number" step="0.01" placeholder="optional">
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button type="submit" class="btn btn-success">Save</button>
+      <button type="button" class="btn btn-back" onclick="document.getElementById('add-form').style.display='none';document.querySelector('.btn-primary').style.display=''">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<!-- Debt List -->
+{% if debts %}
+<div class="section" style="padding:0;overflow:hidden">
+  <table class="table-card" style="margin:0">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>APR %/mo</th>
+        <th>Fixed</th>
+        <th>Note</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for d in debts %}
+    <tr>
+      <td data-label="Name"><strong>{{ d.name }}</strong></td>
+      <td data-label="Type">
+        {% if d.type == 'credit_card' %}
+          <span class="badge badge-red">Credit Card</span>
+        {% elif d.type == 'personal_loan' %}
+          <span class="badge badge-yellow">Loan</span>
+        {% else %}
+          <span class="badge" style="background:var(--border);color:var(--text)">Other</span>
+        {% endif %}
+      </td>
+      <td data-label="APR %/mo">{{ '%.2f' % d.apr_monthly_pct }}%</td>
+      <td data-label="Fixed">
+        {% if d.is_fixed %}
+          <span class="badge badge-green">₱{{ '{:,.0f}'.format(d.fixed_monthly or 0) }}/mo</span>
+          {% if d.fixed_ends %}<span style="color:var(--muted);font-size:.75rem"> until {{ d.fixed_ends }}</span>{% endif %}
+        {% else %}
+          <span style="color:var(--faint)">—</span>
+        {% endif %}
+      </td>
+      <td data-label="Note" style="color:var(--muted);font-size:.82rem">{{ d.note or '—' }}</td>
+      <td data-label="" style="white-space:nowrap">
+        <a href="/debts/{{ d.id }}/edit" class="qbtn qbtn-blue">Edit</a>
+        <form method="POST" action="/debts/{{ d.id }}/delete" style="display:inline"
+              onsubmit="return confirm('Delete {{ d.name }}? This removes ALL monthly entries for this debt.')">
+          <button type="submit" class="qbtn qbtn-red">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="section" style="text-align:center;padding:40px;color:var(--muted)">
+  <p style="font-size:1rem;margin-bottom:8px">No debts added yet.</p>
+  <p style="font-size:.85rem">Click <strong>+ Add Debt</strong> to add your first card or loan.</p>
+</div>
+{% endif %}
+
+<script>
+function toggleFixed(suffix) {
+  const cb = document.getElementById('is-fixed-' + suffix);
+  const fields = document.getElementById('fixed-fields-' + suffix);
+  fields.style.display = cb.checked ? 'block' : 'none';
+}
+</script>
+{% endblock %}

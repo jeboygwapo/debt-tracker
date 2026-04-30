@@ -54,23 +54,38 @@
 
 <div class="section">
   <h3>Income Config</h3>
-  <table style="max-width:400px">
-    <tr>
-      <td style="color:var(--muted)">Monthly Salary</td>
-      <td>{{ cfg.get('monthly_sar', 0) }} SAR</td>
-    </tr>
-    <tr>
-      <td style="color:var(--muted)">Saudi Expenses</td>
-      <td>{{ cfg.get('expenses_sar', 0) }} SAR</td>
-    </tr>
-    <tr>
-      <td style="color:var(--muted)">Phone (ends {{ cfg.get('phone', {}).get('ends', '—') }})</td>
-      <td>{{ cfg.get('phone', {}).get('monthly_sar', 0) }} SAR</td>
-    </tr>
-    <tr>
-      <td style="color:var(--muted)">Net Remittable</td>
-      <td><strong>{{ cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0) }} SAR</strong></td>
-    </tr>
-  </table>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">SAR amounts. Budget = (Salary − Expenses − Phone) × Rate.</p>
+  <form method="POST" style="max-width:420px">
+    <input type="hidden" name="action" value="income">
+    <div style="margin-bottom:12px">
+      <label>Monthly Salary (SAR)</label>
+      <input name="monthly_sar" type="number" step="0.01" value="{{ cfg.get('monthly_sar', 0) }}">
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Saudi Expenses (SAR)</label>
+      <input name="expenses_sar" type="number" step="0.01" value="{{ cfg.get('expenses_sar', 0) }}">
+    </div>
+    <p style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">Phone Installment (optional)</p>
+    <div class="row">
+      <div>
+        <label>Monthly Amount (SAR)</label>
+        <input name="phone_sar" type="number" step="0.01" value="{{ cfg.get('phone', {}).get('monthly_sar', '') }}">
+      </div>
+      <div>
+        <label>Ends (YYYY-MM)</label>
+        <input name="phone_ends" placeholder="2026-07" pattern="\d{4}-\d{2}" value="{{ cfg.get('phone', {}).get('ends', '') }}">
+      </div>
+    </div>
+    <div style="margin-top:4px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:.85rem;color:var(--muted);margin-bottom:14px">
+      Net remittable: <strong style="color:var(--text)">
+        {{ (cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) }} SAR
+      </strong>
+      &nbsp;→&nbsp;
+      <strong style="color:#22c55e">
+        ₱{{ '{:,.0f}'.format((cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) * cfg.get('sar_to_php', 15)) }}
+      </strong>
+    </div>
+    <button type="submit" class="btn btn-primary">Update Income Config</button>
+  </form>
 </div>
 {% endblock %}
