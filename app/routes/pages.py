@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import hash_password, save_env_value, settings
+from ..config import hash_password, verify_password, save_env_value, settings
 from ..db.adapter import build_data_dict, debt_name_to_id
 from ..db.base import get_db
 from ..db.crud import (
@@ -440,7 +440,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
         current = str(form.get("current_password", ""))
         new_pw = str(form.get("new_password", ""))
         confirm = str(form.get("confirm_password", ""))
-        if user.password_hash != hash_password(current):
+        if not verify_password(current, user.password_hash):
             msg = "❌ Current password incorrect."
         elif len(new_pw) < 12:
             msg = "❌ New password must be at least 12 characters."
