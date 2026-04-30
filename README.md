@@ -1,47 +1,56 @@
 # Debt Tracker
 
-Personal debt tracker for managing credit card payoff, fixed loans, and monthly remittance planning.
+Personal debt repayment tracker for managing credit card payoff, fixed loans, and monthly remittance planning. Built for an OFW context: income in SAR, debts in PHP, with avalanche/snowball payoff projections and optional AI analysis.
 
-## Usage
+## Tech Stack
 
-```bash
-python3 app.py
-```
+- **Backend**: FastAPI, SQLAlchemy (async), Alembic
+- **Database**: SQLite (dev), PostgreSQL (prod)
+- **Frontend**: Jinja2, vanilla JS, Chart.js, Tailwind (CDN)
+- **Auth**: Starlette `SessionMiddleware`, bcrypt
+- **Infra**: Docker, GitHub Actions, GHCR
 
-Opens browser at http://localhost:5050
-
-## Monthly Workflow (25th of each month)
-
-1. **Settings** → update SAR→PHP rate
-2. **Remittance** → enter SAR amount → see card allocation
-3. **Dashboard** → Pay This Month table → pay the cards
-4. **Add Month** → enter new statement data
-5. **Dashboard** → AI Analysis section
-
-See `MONTHLY_INPUT_GUIDE.md` for full reference.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `app.py` | Flask web app (main entry) |
-| `tracker.py` | CLI tool (legacy) |
-| `menu.py` | Interactive CLI menu (legacy) |
-| `debts.json` | Data store — debts, payments, config |
-| `MONTHLY_INPUT_GUIDE.md` | Monthly workflow reference |
-
-## Setup
+## Quick Start
 
 ```bash
-pip install flask openai
-python3 app.py
+git clone <repo-url>
+cd debt-tracker
+cp .env.example .env        # fill in SECRET_KEY and DB creds
+docker compose up -d
+docker compose exec app python scripts/init_db.py   # runs migrations + seeds admin
 ```
 
-Optional: add OpenAI API key via Settings page for AI analysis.
+App runs at http://localhost:5050.
 
-## Data Not in Repo
+## Environment Variables
 
-- `.env` — OpenAI API key
-- `statements-april/` — bank statement PDFs
-- `*.csv` — source spreadsheets
-- `dashboard.html` — generated export
+| Variable | Required | Description |
+|---|---|---|
+| `SECRET_KEY` | Yes | Session signing key — generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `DATABASE_URL` | Yes | SQLAlchemy async URL, e.g. `postgresql+asyncpg://user:pass@host/db` |
+| `DB_USER` | Yes (Docker) | Postgres username |
+| `DB_PASSWORD` | Yes (Docker) | Postgres password |
+| `DB_NAME` | Yes (Docker) | Postgres database name |
+| `APP_ENV` | No | `production` or `development` (default: `development`) |
+| `ALLOW_REGISTRATION` | No | `true` to enable self-signup (default: `false`) |
+| `OPENAI_API_KEY` | No | Enables AI debt analysis via `gpt-4o-mini` |
+| `PORT` | No | HTTP port (default: `5050`) |
+
+See `.env.example` for a template.
+
+## Running Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+Uses an isolated SQLite test DB — no external dependencies required.
+
+## CI/CD
+
+- **CI** (`.github/workflows/ci.yml`): runs `pytest` on every push and pull request, all branches.
+- **CD** (`.github/workflows/cd.yml`): builds Docker image and pushes to GHCR on merge to `main`. Tags: `sha-<sha>`, `latest`.
+
+## Monthly Usage
+
+See [MONTHLY_INPUT_GUIDE.md](MONTHLY_INPUT_GUIDE.md) for the monthly data entry workflow.

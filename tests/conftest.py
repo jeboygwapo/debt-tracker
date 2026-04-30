@@ -25,7 +25,7 @@ from app.db.crud import create_debt, create_user
 
 def _run_migrations():
     result = subprocess.run(
-        ["python", "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=ROOT,
         capture_output=True,
         text=True,

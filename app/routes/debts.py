@@ -9,6 +9,8 @@ from ..templating import templates
 
 router = APIRouter(prefix="/debts")
 
+VALID_DEBT_TYPES = {"credit_card", "personal_loan", "other"}
+
 
 def _redirect_login():
     return RedirectResponse("/login", status_code=302)
@@ -52,6 +54,15 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
         })
 
     debt_type = str(form.get("type", "credit_card"))
+    if debt_type not in VALID_DEBT_TYPES:
+        debts = await get_debts(db, user.id)
+        return templates.TemplateResponse(request, "debts.html", {
+            "active": "debts",
+            "debts": debts,
+            "msg": f"Invalid debt type '{debt_type}'.",
+            "msg_type": "error",
+        })
+
     apr = float(str(form.get("apr_monthly_pct", "0") or "0").replace(",", ""))
     note = str(form.get("note", "")).strip() or None
     is_fixed = form.get("is_fixed") == "1"
@@ -128,12 +139,21 @@ async def debt_edit_post(
             "msg_type": "error",
         })
 
+    edit_type = str(form.get("type", "credit_card"))
+    if edit_type not in VALID_DEBT_TYPES:
+        return templates.TemplateResponse(request, "edit_debt.html", {
+            "active": "debts",
+            "debt": debt,
+            "msg": f"Invalid debt type '{edit_type}'.",
+            "msg_type": "error",
+        })
+
     is_fixed = form.get("is_fixed") == "1"
     await update_debt(
         db,
         debt,
         name=name,
-        type=str(form.get("type", "credit_card")),
+        type=edit_type,
         apr_monthly_pct=float(str(form.get("apr_monthly_pct", "0") or "0").replace(",", "")),
         note=str(form.get("note", "")).strip() or None,
         is_fixed=is_fixed,

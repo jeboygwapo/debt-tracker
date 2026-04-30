@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -28,6 +28,8 @@ from ..templating import templates
 router = APIRouter()
 
 _PALETTE = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e"]
+
+VALID_DEBT_TYPES = {"credit_card", "personal_loan", "other"}
 
 
 def _redirect_login():
@@ -218,6 +220,16 @@ async def add_month_post(request: Request, db: AsyncSession = Depends(get_db)):
             "prev": {}, "summary": None, "today": date.today().isoformat(),
         })
 
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return templates.TemplateResponse(request, "add_month.html", {
+            "active": "add",
+            "debt_names": list(name_to_id.keys()),
+            "msg": "Invalid month format. Use YYYY-MM.",
+            "prev": {}, "summary": None, "today": date.today().isoformat(),
+        })
+
     for i, debt in enumerate(debts):
         prefix = f"d_{i}_"
         bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
@@ -253,6 +265,11 @@ async def edit_month_get(
     except NotAuthenticated:
         return _redirect_login()
 
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
+
     months = await get_months(db, user.id)
     if month not in months:
         return RedirectResponse("/", status_code=302)
@@ -281,6 +298,11 @@ async def edit_month_post(
         user = await get_current_user(request, db)
     except NotAuthenticated:
         return _redirect_login()
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
 
     debts = await get_debts(db, user.id)
     form = await request.form()
