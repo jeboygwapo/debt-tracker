@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.txt 2>/dev/null 
 
 COPY main.py ./
 COPY app/ ./app/
+COPY templates/ ./templates/
 COPY static/ ./static/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
