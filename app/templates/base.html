@@ -138,6 +138,7 @@ input:disabled{color:var(--muted)}
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
     <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">Settings</a>
     <span class="nav-spacer"></span>
+    {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">Admin</a>{% endif %}
     <a href="/logout" style="color:#f87171">Logout</a>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
   </div>
