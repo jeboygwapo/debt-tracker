@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_debt_fields.html" import statement_row, payment_row, tab_nav, tab_js %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap">
+  <h2 style="margin-bottom:0">Edit Month</h2>
+  <select onchange="location.href='/edit/'+this.value"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:8px;font-size:.9rem;max-width:160px">
+    {% for m in months_list %}
+    <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+{% if msg %}<div class="alert alert-success">✓ {{ month }} saved.</div>{% endif %}
+
+{{ tab_nav([('statement', '📋 Statement'), ('payments', '💳 Payments')]) }}
+
+<form method="POST">
+  <div id="panel-statement" class="tab-panel">
+    {% for name in debt_names %}
+      {{ statement_row(loop.index0, name, entries.get(name, {})) }}
+    {% endfor %}
+  </div>
+
+  <div id="panel-payments" class="tab-panel">
+    {% for name in debt_names %}
+      {{ payment_row(loop.index0, name, entries.get(name, {}), today) }}
+    {% endfor %}
+  </div>
+
+  <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
+    <button type="submit" class="btn btn-success">💾 Save Changes</button>
+    <a href="/" class="btn-back">← Dashboard</a>
+  </div>
+</form>
+
+{{ tab_js('statement', 'edit_month') }}
+{% endblock %}

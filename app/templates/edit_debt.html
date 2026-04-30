@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap">
+  <a href="/debts" class="btn-back">← Back</a>
+  <h2 style="margin:0">Edit Debt</h2>
+</div>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if msg_type == 'error' else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<div class="section">
+  <form method="POST" action="/debts/{{ debt.id }}/edit">
+    <div class="row">
+      <div>
+        <label>Name *</label>
+        <input name="name" value="{{ debt.name }}" required>
+      </div>
+      <div>
+        <label>Type</label>
+        <select name="type">
+          <option value="credit_card" {{ 'selected' if debt.type == 'credit_card' }}>Credit Card</option>
+          <option value="personal_loan" {{ 'selected' if debt.type == 'personal_loan' }}>Personal Loan</option>
+          <option value="other" {{ 'selected' if debt.type == 'other' }}>Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Monthly APR %</label>
+        <input name="apr_monthly_pct" type="number" step="0.01" value="{{ debt.apr_monthly_pct }}">
+      </div>
+      <div>
+        <label>Note (optional)</label>
+        <input name="note" value="{{ debt.note or '' }}">
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" id="is-fixed-edit" name="is_fixed" value="1"
+               {{ 'checked' if debt.is_fixed }} onchange="toggleFixed('edit')">
+        <span style="font-size:.85rem;color:var(--text2)">Fixed monthly payment (loan / installment)</span>
+      </label>
+    </div>
+
+    <div id="fixed-fields-edit" style="display:{{ 'block' if debt.is_fixed else 'none' }}">
+      <div class="row">
+        <div>
+          <label>Fixed Monthly Amount (₱)</label>
+          <input name="fixed_monthly" type="number" step="0.01" value="{{ debt.fixed_monthly or '' }}">
+        </div>
+        <div>
+          <label>Ends (YYYY-MM)</label>
+          <input name="fixed_ends" placeholder="2027-06" pattern="\d{4}-\d{2}" value="{{ debt.fixed_ends or '' }}">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Reduced Amount After Threshold (₱)</label>
+          <input name="fixed_reduced_monthly" type="number" step="0.01" value="{{ debt.fixed_reduced_monthly or '' }}">
+        </div>
+        <div>
+          <label>Balance Threshold for Reduced Amount (₱)</label>
+          <input name="fixed_reduced_threshold" type="number" step="0.01" value="{{ debt.fixed_reduced_threshold or '' }}">
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+    </div>
+  </form>
+</div>
+
+<div class="section" style="border-left:3px solid #ef4444">
+  <h3 style="color:#ef4444">Danger Zone</h3>
+  <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">
+    Deleting <strong>{{ debt.name }}</strong> will permanently remove all monthly entries for this debt.
+    This cannot be undone.
+  </p>
+  <button class="btn" style="background:#7f1d1d;color:#fca5a5" onclick="showDeleteConfirm()">Delete This Debt</button>
+
+  <div id="delete-confirm" style="display:none;margin-top:16px;padding:14px;background:#450a0a;border-radius:8px;border:1px solid #7f1d1d">
+    <p style="font-size:.9rem;margin-bottom:12px">
+      Type <strong style="color:#fca5a5">{{ debt.name }}</strong> to confirm deletion:
+    </p>
+    <input id="confirm-name-input" placeholder="{{ debt.name }}" style="max-width:300px;margin-bottom:10px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <form method="POST" action="/debts/{{ debt.id }}/delete" id="delete-form">
+        <button type="submit" id="confirm-delete-btn" class="btn" style="background:#b91c1c;color:#fff" disabled>
+          Yes, Delete Permanently
+        </button>
+      </form>
+      <button class="btn btn-back" onclick="hideDeleteConfirm()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleFixed(suffix) {
+  const cb = document.getElementById('is-fixed-' + suffix);
+  const fields = document.getElementById('fixed-fields-' + suffix);
+  fields.style.display = cb.checked ? 'block' : 'none';
+}
+
+function showDeleteConfirm() {
+  document.getElementById('delete-confirm').style.display = 'block';
+  document.getElementById('confirm-name-input').focus();
+}
+
+function hideDeleteConfirm() {
+  document.getElementById('delete-confirm').style.display = 'none';
+  document.getElementById('confirm-name-input').value = '';
+  document.getElementById('confirm-delete-btn').disabled = true;
+}
+
+document.getElementById('confirm-name-input').addEventListener('input', function() {
+  const expected = '{{ debt.name }}';
+  document.getElementById('confirm-delete-btn').disabled = this.value !== expected;
+});
+</script>
+{% endblock %}

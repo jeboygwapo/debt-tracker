@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Admin — User Management</h2>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if msg_type == 'error' else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<!-- User List -->
+<div class="section" style="padding:0;overflow:hidden;margin-bottom:20px">
+  <table class="table-card">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for u in users %}
+    <tr>
+      <td data-label="ID" style="color:var(--muted)">{{ u.id }}</td>
+      <td data-label="Username">
+        <strong>{{ u.username }}</strong>
+        {% if u.id == current_user_id %}<span class="badge" style="background:var(--border);color:var(--muted);margin-left:6px">you</span>{% endif %}
+      </td>
+      <td data-label="Role">
+        {% if u.is_admin %}
+          <span class="badge badge-yellow">Admin</span>
+        {% else %}
+          <span class="badge" style="background:var(--border);color:var(--text2)">User</span>
+        {% endif %}
+      </td>
+      <td data-label="Created" style="color:var(--muted);font-size:.82rem">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+      <td data-label="Actions" style="white-space:nowrap">
+        <button class="qbtn qbtn-blue" onclick="showReset({{ u.id }}, '{{ u.username }}')">Reset PW</button>
+        {% if u.id != current_user_id %}
+        <form method="POST" action="/admin/users/{{ u.id }}/delete" style="display:inline"
+              onsubmit="return confirm('Delete user {{ u.username }}? All their data will be permanently removed.')">
+          <button type="submit" class="qbtn qbtn-red">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Reset Password Modal -->
+<div id="reset-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:12px;padding:24px;max-width:380px;width:90%;border:1px solid var(--border)">
+    <h3 style="margin-bottom:16px;font-size:1rem">Reset Password — <span id="reset-username"></span></h3>
+    <form id="reset-form" method="POST">
+      <div style="margin-bottom:12px">
+        <label>New Password (min 12 chars)</label>
+        <input id="reset-pw" name="password" type="password" autocomplete="new-password">
+      </div>
+      <div style="margin-bottom:16px">
+        <label>Confirm Password</label>
+        <input id="reset-pw2" type="password" autocomplete="new-password">
+      </div>
+      <div id="reset-err" style="color:#f87171;font-size:.82rem;margin-bottom:10px;display:none"></div>
+      <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Reset Password</button>
+        <button type="button" class="btn btn-back" onclick="hideReset()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Create User -->
+<div class="section">
+  <h3>Create New User</h3>
+  <form method="POST" action="/admin/users/create" style="max-width:420px">
+    <div style="margin-bottom:12px">
+      <label>Username</label>
+      <input name="username" placeholder="e.g. janedoe" autocomplete="off">
+    </div>
+    <div style="margin-bottom:12px">
+      <label>Password (min 12 chars)</label>
+      <input name="password" type="password" autocomplete="new-password">
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" name="is_admin" value="1">
+        <span style="font-size:.85rem;color:var(--text2)">Grant admin access</span>
+      </label>
+    </div>
+    <button type="submit" class="btn btn-success">Create User</button>
+  </form>
+</div>
+
+<script>
+function showReset(id, username) {
+  document.getElementById('reset-username').textContent = username;
+  document.getElementById('reset-form').action = `/admin/users/${id}/reset-password`;
+  document.getElementById('reset-pw').value = '';
+  document.getElementById('reset-pw2').value = '';
+  document.getElementById('reset-err').style.display = 'none';
+  const m = document.getElementById('reset-modal');
+  m.style.display = 'flex';
+}
+
+function hideReset() {
+  document.getElementById('reset-modal').style.display = 'none';
+}
+
+document.getElementById('reset-form').addEventListener('submit', function(e) {
+  const pw = document.getElementById('reset-pw').value;
+  const pw2 = document.getElementById('reset-pw2').value;
+  const err = document.getElementById('reset-err');
+  if (pw.length < 12) {
+    e.preventDefault();
+    err.textContent = 'Password must be at least 12 characters.';
+    err.style.display = 'block';
+    return;
+  }
+  if (pw !== pw2) {
+    e.preventDefault();
+    err.textContent = 'Passwords do not match.';
+    err.style.display = 'block';
+  }
+});
+
+document.getElementById('reset-modal').addEventListener('click', function(e) {
+  if (e.target === this) hideReset();
+});
+</script>
+{% endblock %}

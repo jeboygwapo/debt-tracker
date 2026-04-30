@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+  <h2 style="margin-bottom:0">Dashboard{% if not is_latest %} — {{ viewing }}{% endif %}</h2>
+  <select onchange="location.href='/?month='+this.value"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:8px;font-size:.9rem;max-width:160px">
+    {% for m in months_list %}
+    <option value="{{ m }}" {% if m == viewing %}selected{% endif %}>{{ m }}{% if m == latest %} ★{% endif %}</option>
+    {% endfor %}
+  </select>
+  <a href="/edit/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem">✏️ Edit</a>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="label">Total Debt</div><div class="value red">{{ total_now | peso }}</div></div>
+  <div class="card"><div class="label">Credit Cards</div><div class="value yellow">{{ total_cc | peso }}</div></div>
+  <div class="card"><div class="label">Interest / Month</div><div class="value red">{{ monthly_interest | peso }}</div></div>
+  <div class="card"><div class="label">Debt-Free Target</div><div class="value green">{{ debt_free }}</div></div>
+  <div class="card"><div class="label">Monthly Budget</div><div class="value blue">{{ budget_php | peso }}</div></div>
+  <div class="card"><div class="label">SAR→PHP Rate</div><div class="value">1 SAR = ₱{{ rate }}</div></div>
+</div>
+
+<div class="charts">
+  <div class="chart-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h3 style="margin-bottom:0">Balance Trend</h3>
+      <div class="chart-toggle" id="trend-toggle">
+        <button class="active" onclick="setTrendType('line',this)">Line</button>
+        <button onclick="setTrendType('bar',this)">Bar</button>
+      </div>
+    </div>
+    <div style="position:relative;height:260px">
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <h3 style="margin-bottom:0">Breakdown</h3>
+      <div class="chart-toggle" id="donut-toggle">
+        <button class="active" onclick="setDonutType('doughnut',this)">Donut</button>
+        <button onclick="setDonutType('pie',this)">Pie</button>
+        <button onclick="setDonutType('bar',this)">Bar</button>
+      </div>
+    </div>
+    <div style="position:relative;height:260px">
+      <canvas id="donutChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="border:2px solid #854d0e">
+  <h3 style="color:#fde68a">💰 {% if is_latest %}Pay This Month{% else %}Payment Plan — {{ viewing }}{% endif %} — Budget {{ budget_php | peso }}</h3>
+  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">Avalanche: minimums on all, everything extra → ATTACK card first.</p>
+  <table class="table-card">
+    <thead>
+      <tr>
+        <th>#</th><th>Card / Loan</th><th>Balance</th><th>Min Due</th>
+        <th>Interest/mo</th><th>Extra</th><th>→ Pay</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for n, e in entries.items() %}
+        {% if n in fixed_pmts and (e.get('balance') or 0) > 0 %}
+        <tr>
+          <td data-label="#">Fixed</td>
+          <td data-label="Card">{{ n }}</td>
+          <td data-label="Balance">{{ (e.get('balance') or 0) | peso }}</td>
+          <td data-label="Min Due">{{ (e.get('min_due') or 0) | peso }}</td>
+          <td data-label="Interest">—</td>
+          <td data-label="Extra">—</td>
+          <td data-label="→ Pay"><strong style="color:#22c55e">{{ pay_alloc.get(n, 0) | peso }}</strong></td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      {% for n, bal, mn, apr, interest in cc_priority %}
+      {% set rank = loop.index %}
+      {% set alloc = pay_alloc.get(n, 0) %}
+      {% set extra = alloc - mn %}
+      <tr>
+        <td data-label="#">{% if rank == 1 %}<span class="attack">ATTACK</span>{% else %}#{{ rank }}{% endif %}</td>
+        <td data-label="Card">{{ n }}</td>
+        <td data-label="Balance">{{ bal | peso }}</td>
+        <td data-label="Min Due">{{ mn | peso }}</td>
+        <td data-label="Interest" style="color:#ef4444">{{ interest | peso }}</td>
+        <td data-label="Extra">{% if extra > 0.5 %}<span style="color:#22c55e">+{{ extra | peso }}</span>{% else %}—{% endif %}</td>
+        <td data-label="→ Pay"><strong style="color:#22c55e">{{ alloc | peso }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>All Cards — Status {{ viewing }}</h3>
+  <table class="table-card">
+    <thead>
+      <tr>
+        <th>Card / Loan</th><th>Balance</th><th>Min Due</th>
+        <th>Interest/mo</th><th>Due Date</th><th>Paid</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in status_rows %}
+      <tr>
+        <td data-label="Card">{{ r.name }}</td>
+        {% if r.done %}
+          <td colspan="6" style="color:#22c55e;font-weight:600">DONE ✓</td>
+        {% else %}
+          <td data-label="Balance">{{ r.balance | peso }}</td>
+          <td data-label="Min Due">{{ r.min_due | peso }}</td>
+          <td data-label="Interest" style="color:#ef4444">{% if r.interest > 0 %}{{ r.interest | peso }}{% else %}—{% endif %}</td>
+          <td data-label="Due">{{ r.due }}</td>
+          <td data-label="Paid">
+            {% if r.payment > 0 %}
+              <strong style="color:#22c55e">{{ r.payment | peso }}</strong>
+              {% if r.payment < r.min_due %}
+                <span style="color:#ef4444;font-size:.72rem"> ⚠ under min</span>
+              {% elif r.payment > r.min_due %}
+                <span style="color:#f59e0b;font-size:.72rem"> +{{ (r.payment - r.min_due) | peso }}</span>
+              {% endif %}
+            {% else %}
+              <span style="color:var(--border2)">—</span>
+            {% endif %}
+          </td>
+          <td data-label="Status">
+            {% if r.paid and r.paid not in ('Good', 'Ready') %}
+              <span class="badge badge-green">✓ {{ r.paid }}</span>
+            {% elif r.paid %}
+              <span class="badge badge-yellow">{{ r.paid }}</span>
+            {% else %}
+              <span class="badge badge-red">Unpaid</span>
+            {% endif %}
+          </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if has_ai and is_latest %}
+<div class="section" style="border:2px solid #1d4ed8" id="ai-section">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+    <h3 style="color:#93c5fd">🤖 AI Analysis — GPT-4o-mini</h3>
+    <button id="ai-refresh-btn" onclick="loadAnalysis(true)"
+      style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:.8rem;cursor:pointer">
+      ↺ Refresh
+    </button>
+  </div>
+  <div id="ai-content" style="font-size:.9rem;line-height:1.7;color:var(--muted)">
+    <span>Loading analysis…</span>
+  </div>
+  <p id="ai-meta" style="color:var(--faint);font-size:.75rem;margin-top:10px"></p>
+</div>
+{% endif %}
+
+<script>
+const hL = {{ hist_labels | tojson }};
+const hT = {{ hist_totals | tojson }};
+const pL = {{ proj_labels | tojson }};
+const pT = {{ proj_totals | tojson }};
+const dL = {{ donut_labels | tojson }};
+const dV = {{ donut_values | tojson }};
+const dC = {{ donut_colors | tojson }};
+const isLatest = {{ 'true' if is_latest else 'false' }};
+
+function chartColors() {
+  const s = getComputedStyle(document.documentElement);
+  return {
+    tick:  s.getPropertyValue('--chart-tick').trim(),
+    grid:  s.getPropertyValue('--chart-grid').trim(),
+    muted: s.getPropertyValue('--muted').trim(),
+    surface: s.getPropertyValue('--surface').trim(),
+  };
+}
+
+let trendChart, donutChart;
+
+function buildTrend(type) {
+  if (trendChart) trendChart.destroy();
+  if (!hL.length) return;
+  const c = chartColors();
+  const allL = isLatest ? [...hL, ...pL] : [...hL];
+  const hD   = isLatest ? [...hT, ...new Array(pL.length).fill(null)] : [...hT];
+  const pD   = isLatest ? [...new Array(hL.length-1).fill(null), hT[hT.length-1], ...pT] : [];
+  const datasets = type === 'bar'
+    ? [{ label:'Actual', data:hD, backgroundColor:'rgba(59,130,246,.7)', borderRadius:4 }]
+    : [
+        { label:'Actual',    data:hD, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,.1)', tension:.3, fill:true, pointRadius:4 },
+        ...(isLatest ? [{ label:'Projected', data:pD, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.05)', borderDash:[5,5], tension:.3, fill:true, pointRadius:2 }] : [])
+      ];
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type,
+    data: { labels: allL, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: c.muted } } },
+      scales: {
+        x: { ticks: { color: c.tick, maxTicksLimit: 10 }, grid: { color: c.grid } },
+        y: { ticks: { color: c.tick, callback: v => '₱' + v.toLocaleString() }, grid: { color: c.grid } }
+      }
+    }
+  });
+  localStorage.setItem('trendType', type);
+}
+
+function buildDonut(type) {
+  if (donutChart) donutChart.destroy();
+  if (!dL.length) return;
+  const c = chartColors();
+  const isBar = type === 'bar';
+  donutChart = new Chart(document.getElementById('donutChart'), {
+    type: isBar ? 'bar' : type,
+    data: {
+      labels: dL,
+      datasets: [{ data: dV, backgroundColor: dC, borderWidth: isBar ? 0 : 2, borderColor: c.surface, borderRadius: isBar ? 4 : 0 }]
+    },
+    options: {
+      indexAxis: isBar ? 'y' : undefined,
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: isBar
+          ? { display: false }
+          : { position: 'bottom', labels: { color: c.muted, font: { size: 11 }, padding: 8 } }
+      },
+      ...(isBar ? { scales: {
+        x: { ticks: { color: c.tick, callback: v => '₱'+v.toLocaleString() }, grid: { color: c.grid } },
+        y: { ticks: { color: c.tick } , grid: { color: c.grid } }
+      }} : {})
+    }
+  });
+  localStorage.setItem('donutType', type);
+}
+
+function setTrendType(type, btn) {
+  document.querySelectorAll('#trend-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildTrend(type);
+}
+
+function setDonutType(type, btn) {
+  document.querySelectorAll('#donut-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  buildDonut(type);
+}
+
+const savedTrend = localStorage.getItem('trendType') || 'line';
+const savedDonut = localStorage.getItem('donutType') || 'doughnut';
+
+document.querySelectorAll('#trend-toggle button').forEach(b => {
+  if (b.textContent.toLowerCase() === savedTrend) b.classList.add('active');
+  else b.classList.remove('active');
+});
+document.querySelectorAll('#donut-toggle button').forEach(b => {
+  const t = b.textContent.toLowerCase();
+  if (t === savedDonut || (t === 'donut' && savedDonut === 'doughnut')) b.classList.add('active');
+  else b.classList.remove('active');
+});
+
+buildTrend(savedTrend);
+buildDonut(savedDonut);
+
+{% if has_ai and is_latest %}
+function loadAnalysis(force = false) {
+  const el   = document.getElementById('ai-content');
+  const meta = document.getElementById('ai-meta');
+  const btn  = document.getElementById('ai-refresh-btn');
+  el.innerHTML = '<span>Analyzing your debts…</span>';
+  btn.disabled = true; btn.textContent = 'Loading…';
+  fetch('/api/analysis' + (force ? '?force=1' : ''))
+    .then(r => r.json())
+    .then(d => {
+      if (d.html) {
+        el.innerHTML = d.html;
+        meta.innerHTML = 'Based on {{ latest }} balances'
+          + (d.cached ? ' · <span style="color:#22c55e">cached</span>' : ' · <span style="color:#f59e0b">fresh from OpenAI</span>');
+      } else {
+        el.innerHTML = '<p style="color:#f87171">' + (d.error || 'Unknown error') + '</p>';
+        meta.innerHTML = '';
+      }
+      btn.disabled = false; btn.textContent = '↺ Refresh';
+    })
+    .catch(() => {
+      el.innerHTML = '<p style="color:#f87171">Failed to load analysis.</p>';
+      btn.disabled = false; btn.textContent = '↺ Refresh';
+    });
+}
+loadAnalysis();
+{% endif %}
+</script>
+{% endblock %}
