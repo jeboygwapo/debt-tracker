@@ -73,6 +73,10 @@ class Settings:
         return os.environ.get("OPENAI_API_KEY", "")
 
     @property
+    def allow_registration(self) -> bool:
+        return os.environ.get("ALLOW_REGISTRATION", "false").lower() == "true"
+
+    @property
     def debug(self) -> bool:
         return os.environ.get("FLASK_DEBUG", "false").lower() == "true"
 

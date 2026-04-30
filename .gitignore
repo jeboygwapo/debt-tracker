@@ -33,6 +33,12 @@ statements*/
 .DS_Store
 Thumbs.db
 
+# DB files (dev/test databases)
+*.db
+*.sqlite
+*.sqlite3
+
 # Claude
 .claude/
 .claudeignore
+CLAUDE.original.md

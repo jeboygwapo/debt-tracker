@@ -3,40 +3,45 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Debt Tracker — Login</title>
+<title>Debt Tracker — Register</title>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--inp:#0f172a}
 [data-theme="light"]{--bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--inp:#f8fafc}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;transition:background .2s,color .2s}
 .card{background:var(--surface);border-radius:12px;padding:2.5rem;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.3);border:1px solid var(--border)}
-h2{font-size:1.4rem;margin-bottom:1.5rem;text-align:center}
+h2{font-size:1.4rem;margin-bottom:.5rem;text-align:center}
+.sub{font-size:.82rem;color:var(--muted);text-align:center;margin-bottom:1.5rem}
 label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:.4rem}
 input{width:100%;padding:.65rem .9rem;background:var(--inp);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.95rem;margin-bottom:1rem}
 input:focus{outline:none;border-color:#6366f1}
 button{width:100%;padding:.75rem;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600}
 button:hover{background:#4f46e5}
 .err{color:#f87171;font-size:.85rem;margin-bottom:1rem;text-align:center}
+.login-link{text-align:center;margin-top:1.2rem;font-size:.85rem;color:var(--muted)}
+.login-link a{color:#6366f1;text-decoration:none}
+.login-link a:hover{text-decoration:underline}
 .theme-toggle{position:fixed;top:14px;right:14px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.85rem}
+.hint{font-size:.75rem;color:var(--muted);margin-top:-.7rem;margin-bottom:1rem}
 </style>
 </head>
 <body>
 <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🌙</button>
 <div class="card">
   <h2>💳 Debt Tracker</h2>
+  <p class="sub">Create your account</p>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <form method="POST">
     <label>Username</label>
-    <input name="username" type="text" autofocus autocomplete="username">
+    <input name="username" type="text" autofocus autocomplete="username" minlength="3">
     <label>Password</label>
-    <input name="password" type="password" autocomplete="current-password">
-    <button type="submit">Sign In</button>
+    <input name="password" type="password" autocomplete="new-password" minlength="12">
+    <p class="hint">Minimum 12 characters</p>
+    <label>Confirm Password</label>
+    <input name="confirm_password" type="password" autocomplete="new-password" minlength="12">
+    <button type="submit">Create Account</button>
   </form>
-  {% if allow_registration %}
-  <p style="text-align:center;margin-top:1.2rem;font-size:.85rem;color:var(--muted)">
-    No account? <a href="/register" style="color:#6366f1;text-decoration:none">Register</a>
-  </p>
-  {% endif %}
+  <p class="login-link">Already have an account? <a href="/login">Sign in</a></p>
 </div>
 <script>
 function toggleTheme(){
