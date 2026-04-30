@@ -28,7 +28,8 @@ app/
     auth.py          # GET/POST /login, GET /logout
     pages.py         # /, /add, /edit/{month}, /plan, /remit, /settings
     api.py           # GET /api/analysis
-    debts.py         # GET/POST /debts, /debts/{id}/edit, /debts/{id}/delete
+    debts.py         # GET/POST /debts, /debts/{id}/edit, /debts/{id}/delete, /debts/reorder
+    admin.py         # GET /admin, POST /admin/users/create|{id}/reset-password|{id}/delete
   services/
     ai.py            # get_analysis(), compute_hash() — OpenAI call + AiCache
     planner.py       # compute_plan(), allocate_budget(), latest_month()
@@ -46,7 +47,7 @@ scripts/             # one-off admin/migration scripts
 
 ## Key CRUD Functions (app/db/crud.py)
 - Users: `get_user_by_username`, `get_user_by_id`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `delete_user`
-- Debts: `get_debts(db, user_id)`, `get_debt_by_id(db, debt_id, user_id)`, `create_debt(db, user_id, **kwargs)`, `update_debt(db, debt, **kwargs)`, `delete_debt(db, debt_id, user_id)`
+- Debts: `get_debts(db, user_id)`, `get_debt_by_id(db, debt_id, user_id)`, `create_debt(db, user_id, **kwargs)`, `update_debt(db, debt, **kwargs)`, `delete_debt(db, debt_id, user_id)`, `reorder_debts(db, user_id, ordered_ids)`
 - Entries: `get_months`, `get_entries_for_month`, `get_all_entries`, `upsert_entry`, `delete_entries_for_month`
 - AI: `get_ai_cache(db, user_id)`, `set_ai_cache(db, user_id, data_hash, html)`
 
@@ -86,7 +87,7 @@ scripts/             # one-off admin/migration scripts
 - No `Co-Authored-By` trailers in commits
 
 ## MONTHLY_INPUT_GUIDE.md
-Update after any change to add/edit month flow, debt fields, or income config. Documents monthly data entry — keep accurate.
+Update after changes to add/edit month flow, debt fields, or income config. Documents monthly data entry — keep accurate.
 
 ## Templates — Patterns
 - All extend `base.html`, set `active=` context var for nav highlight
@@ -95,10 +96,20 @@ Update after any change to add/edit month flow, debt fields, or income config. D
 - Tables: add `table-card` for mobile card-style collapse; `td` needs `data-label=` for mobile labels
 - Delete confirmation: type-the-name input enables submit (see `edit_debt.html`)
 
+## Testing
+```
+python -m pytest tests/ -v
+```
+- Stack: `pytest` + `httpx.AsyncClient` + `anyio`
+- `tests/conftest.py` — isolated SQLite test DB (`tests/test_debttracker.db`), auto-created and torn down
+- DB overridden via `os.environ["DATABASE_URL"]` before app import — must stay at top of conftest
+- Seed: 1 admin user + 3 debts created per session
+- 25 tests: auth, pages, debts CRUD+reorder, admin user management
+- Test DB excluded from Claude context via `.claudeignore`
+
 ## Do Not Touch
-- `alembic/versions/` — never edit migration files manually, generate with `alembic revision`
+- `alembic/versions/` — never edit manually, generate with `alembic revision`
 - Session secret in `.env` (`SECRET_KEY`) — never log or expose
-- `admin.py` not yet created — placeholder in layout above
 
 ## Settings Actions (POST /settings, action= field)
 - `rate` — update `sar_to_php` in income_config
@@ -107,9 +118,9 @@ Update after any change to add/edit month flow, debt fields, or income config. D
 - `password` — verify current, enforce 12-char min, update hash
 
 ## DB Dialect Notes
-- `income_config` uses generic `sa.JSON` (not `JSONB`) — works SQLite + Postgres
-- `created_at` uses Python-side `default=datetime.utcnow` (not `server_default=func.now()`) — `now()` is Postgres-only
-- Alembic migration uses `CURRENT_TIMESTAMP` (ANSI SQL, works both dialects)
+- `income_config` uses `sa.JSON` (not `JSONB`) — works SQLite + Postgres
+- `created_at` uses Python-side `default=datetime.utcnow` (not `server_default=func.now()`) — `now()` Postgres-only
+- Alembic migration uses `CURRENT_TIMESTAMP` (ANSI SQL, both dialects)
 - Dev default DB: `sqlite+aiosqlite:///debttracker.db` — set `DATABASE_URL` env var for Postgres
 
 ## Init / First Run
@@ -136,4 +147,7 @@ python scripts/init_db.py
 - Admin routes: not built
 - First-run init: `scripts/init_db.py` — migrations + admin seed, idempotent
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
-- Next: data migration from debts.json → admin user management
+- Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
+- Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
+- Test suite: 25 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
+- Next: merge all branches → develop → multi-user registration
