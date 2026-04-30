@@ -3,7 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.base import get_db
-from ..db.crud import create_debt, delete_debt, get_debt_by_id, get_debts, update_debt
+from ..db.crud import create_debt, delete_debt, get_debt_by_id, get_debts, reorder_debts, update_debt
 from ..dependencies import NotAuthenticated, get_current_user
 from ..templating import templates
 
@@ -160,6 +160,25 @@ async def debt_delete(
     if debt:
         await delete_debt(db, debt_id, user.id)
     return RedirectResponse("/debts?msg=Debt+deleted.", status_code=303)
+
+
+@router.post("/reorder")
+async def debts_reorder(request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return _redirect_login()
+
+    form = await request.form()
+    raw = str(form.get("order", "")).strip()
+    try:
+        ordered_ids = [int(x) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        return RedirectResponse("/debts", status_code=303)
+
+    if ordered_ids:
+        await reorder_debts(db, user.id, ordered_ids)
+    return RedirectResponse("/debts?msg=Order+saved.", status_code=303)
 
 
 def _float(val) -> float | None:
