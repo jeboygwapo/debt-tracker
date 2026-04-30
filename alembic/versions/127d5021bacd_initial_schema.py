@@ -26,8 +26,8 @@ def upgrade() -> None:
     sa.Column('username', sa.String(length=64), nullable=False),
     sa.Column('password_hash', sa.String(length=64), nullable=False),
     sa.Column('is_admin', sa.Boolean(), nullable=False),
-    sa.Column('income_config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('income_config', sa.JSON(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
@@ -52,7 +52,7 @@ def upgrade() -> None:
     sa.Column('fixed_reduced_monthly', sa.Float(), nullable=True),
     sa.Column('fixed_reduced_threshold', sa.Float(), nullable=True),
     sa.Column('sort_order', sa.Integer(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )

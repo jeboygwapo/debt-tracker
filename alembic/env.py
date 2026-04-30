@@ -16,10 +16,8 @@ from app.db.base import Base
 from app.db.models import AiCache, Debt, MonthlyEntry, User  # noqa: F401
 
 config = context.config
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.database_url.replace("+asyncpg", ""),
-)
+_sync_url = settings.database_url.replace("+asyncpg", "").replace("+aiosqlite", "")
+config.set_main_option("sqlalchemy.url", _sync_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

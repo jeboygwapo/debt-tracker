@@ -1,8 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -15,8 +14,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    income_config: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    income_config: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     debts: Mapped[list["Debt"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     monthly_entries: Mapped[list["MonthlyEntry"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -41,7 +40,7 @@ class Debt(Base):
     fixed_reduced_threshold: Mapped[Optional[float]] = mapped_column(Float)
 
     sort_order: Mapped[int] = mapped_column(default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="debts")
     monthly_entries: Mapped[list["MonthlyEntry"]] = relationship(back_populates="debt", cascade="all, delete-orphan")

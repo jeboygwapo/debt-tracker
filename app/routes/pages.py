@@ -55,7 +55,7 @@ async def dashboard(
 
     data = await _load_user_data(db, user)
 
-    latest = latest_month(data)
+    latest = latest_month(data) or ""
     viewing = month if (month and month in data["months"]) else latest
     is_latest = viewing == latest
     entries = data["months"].get(viewing, {})
