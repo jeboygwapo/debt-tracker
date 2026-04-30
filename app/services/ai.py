@@ -74,7 +74,7 @@ async def get_analysis(
                     "role": "system",
                     "content": (
                         "Personal finance advisor for Filipino OFW. Be direct, specific, "
-                        "use numbers. Format in clean HTML using <p><ul><li><strong> tags only."
+                        "use numbers. Plain text only — no HTML tags, no markdown."
                     ),
                 },
                 {
@@ -91,9 +91,14 @@ async def get_analysis(
             ],
             max_tokens=600,
         )
-        html = resp.choices[0].message.content
-        await set_ai_cache(db, user_id, current_hash, html)
-        return html
+        import html as html_lib
+        import re
+        raw = resp.choices[0].message.content or ""
+        raw = re.sub(r"<[^>]+>", "", raw)  # strip any stray HTML tags
+        safe = html_lib.escape(raw)
+        formatted = "<br>".join(safe.splitlines())
+        await set_ai_cache(db, user_id, current_hash, formatted)
+        return formatted
 
     except Exception as e:
         return f"<p style='color:red'>AI error: {e}</p>"

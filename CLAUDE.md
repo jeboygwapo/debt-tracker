@@ -144,15 +144,21 @@ python scripts/init_db.py
 - `.github/workflows/cd.yml` — Docker build + push to GHCR on merge to main; tags: `sha-<sha>`, `latest`
 - Health check: `GET /api/healthz` — DB ping, returns `{"status":"ok"}` or 503
 
+## Registration
+- `GET/POST /register` — self-signup, gated by `ALLOW_REGISTRATION=true` env var (default: false)
+- Redirect to `/login` when disabled; redirect new user to `/debts` on success
+- Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
+- Login page shows "Register" link only when `allow_registration=True` passed in context
+
 ## Current State (as of 2026-04-30)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
 - Income config fully editable in Settings (salary, expenses, phone installment)
-- Multi-user: DB layer ready (all tables scoped by user_id), no registration UI yet
+- Multi-user: registration via `/register` (gated by ALLOW_REGISTRATION env var)
 - First-run init: `scripts/init_db.py` — migrations + admin seed, idempotent
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 26 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
+- Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
-- Next: merge all branches → develop → multi-user registration
+- Next: merge feature/multi-user-registration → develop → main
