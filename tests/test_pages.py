@@ -52,3 +52,10 @@ async def test_api_analysis(authed_client):
     assert r.status_code == 200
     data = r.json()
     assert "html" in data or "error" in data
+
+
+@pytest.mark.anyio
+async def test_healthz(client):
+    r = await client.get("/api/healthz")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"

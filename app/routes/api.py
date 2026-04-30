@@ -10,6 +10,16 @@ from ..services.ai import compute_hash, get_analysis
 router = APIRouter(prefix="/api")
 
 
+@router.get("/healthz")
+async def healthz(db: AsyncSession = Depends(get_db)):
+    try:
+        from sqlalchemy import text
+        await db.execute(text("SELECT 1"))
+        return {"status": "ok"}
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)}, status_code=503)
+
+
 @router.get("/analysis")
 async def analysis(
     request: Request,
