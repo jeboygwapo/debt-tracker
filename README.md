@@ -1,19 +1,23 @@
 # Debt Tracker
 
-Personal debt repayment tracker for managing credit card payoff, fixed loans, and monthly budget/remittance planning. Supports OFW context (income in foreign currency, debts in local currency) or local-only mode with no exchange rate conversion.
+Personal debt repayment tracker for managing credit card payoff, fixed loans, and monthly budget planning. Supports OFW context (income in foreign currency, debts in local currency with exchange rate conversion) or local-only mode.
 
-Live at: **https://personal-debt-tracker.fly.dev**
+**Live:** https://personal-debt-tracker.fly.dev
+
+---
 
 ## Features
 
 - **Dashboard** — total debt, credit card balance, monthly interest, debt-free target, avalanche payment plan
-- **Balance Trend & Breakdown** — Chart.js line/bar/donut with projected payoff curve
-- **Budget / Remittance Planner** — enter amount sent, see allocation across all cards
-- **Avalanche payoff engine** — minimums on all cards, extra cash attacks highest-APR first
-- **OFW mode** — toggle in Settings; when on, converts income currency → debt currency using saved exchange rate; when off, budget stays in local currency
-- **AI Analysis** — optional OpenAI `gpt-4o-mini` debt summary (3 calls/day per user, admins exempt)
+- **Balance Trend & Breakdown** — Chart.js line/bar/donut charts with projected payoff curve
+- **Budget / Remittance Planner** — enter amount available, see allocation across all cards
+- **Avalanche payoff engine** — minimums on all, extra cash attacks highest-APR card first
+- **OFW mode** — toggle in Settings; converts income currency → debt currency at saved rate; when off, budget stays in local currency
+- **AI Analysis** — optional OpenAI `gpt-4o-mini` debt summary; 3 calls/day per user (admins exempt, cached hits free)
 - **Multi-user** — admin dashboard for user management; self-signup gated by `ALLOW_REGISTRATION`
-- **Weekly DB backup** — GitHub Actions exports CSV to workflow artifacts every Sunday
+- **Weekly DB backup** — GitHub Actions exports all data to CSV artifacts every Sunday
+
+---
 
 ## Tech Stack
 
@@ -21,73 +25,157 @@ Live at: **https://personal-debt-tracker.fly.dev**
 - **Database**: SQLite (dev), PostgreSQL (prod)
 - **Frontend**: Jinja2, vanilla JS, Chart.js, Tailwind (CDN)
 - **Auth**: Starlette `SessionMiddleware`, bcrypt
-- **Infra**: Docker, GitHub Actions, GHCR, Fly.io
+- **Deploy**: Docker + Fly.io (Singapore region)
 
-## Quick Start
+---
+
+## Local Development
+
+### Prerequisites
+- Python 3.13
+- Docker (for local Postgres)
+
+### Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/jeboygwapo/debt-tracker.git
 cd debt-tracker
-cp .env.example .env        # fill in SECRET_KEY and DB creds
+
+# Create virtualenv and install deps
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Copy and fill in env vars
+cp fly.env.example .env
+# Set at minimum: SECRET_KEY (generate below), DATABASE_URL
+
+# Generate SECRET_KEY
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Start local Postgres
+
+```bash
+# Set DB vars in .env first (DB_USER, DB_PASSWORD, DB_NAME)
 docker compose up -d
-docker compose exec app python scripts/init_db.py   # runs migrations + seeds admin
+```
+
+### Init database and seed admin
+
+```bash
+python scripts/init_db.py
+```
+
+Runs Alembic migrations, prompts for admin username + password if no users exist. Safe to re-run.
+
+### Run the app
+
+```bash
+uvicorn main:app --reload --port 5050
 ```
 
 App runs at http://localhost:5050.
 
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `SECRET_KEY` | Yes | Session signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `DATABASE_URL` | Yes | SQLAlchemy async URL, e.g. `postgresql+asyncpg://user:pass@host/db` |
-| `DB_USER` | Yes (Docker) | Postgres username |
-| `DB_PASSWORD` | Yes (Docker) | Postgres password |
-| `DB_NAME` | Yes (Docker) | Postgres database name |
-| `APP_ENV` | No | `production` or `development` (default: `development`) |
-| `ALLOW_REGISTRATION` | No | `true` to enable self-signup (default: `false`) |
-| `OPENAI_API_KEY` | No | Enables AI debt analysis via `gpt-4o-mini` |
-| `AI_DAILY_LIMIT` | No | Max AI calls per user per day (default: `3`; admins exempt) |
-| `PORT` | No | HTTP port (default: `5050`) |
-
-See `fly.env.example` for the full list of Fly.io secrets.
-
-## Running Tests
+### Run tests
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-Uses an isolated SQLite test DB — no external dependencies required. 41 tests covering auth, pages, debts CRUD, admin, and AI rate limiting.
+Uses an isolated SQLite test DB — no Docker or Postgres required. 41 tests across auth, pages, debts, admin, and AI rate limiting.
 
-## Deploy to Fly.io
+---
+
+## Environment Variables
+
+See `fly.env.example` for the full template with descriptions.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SECRET_KEY` | Yes | — | Session signing key |
+| `DATABASE_URL` | Yes | — | SQLAlchemy async URL, e.g. `postgresql+asyncpg://user:pass@host/db` |
+| `APP_ENV` | No | `development` | Set `production` to enforce SECRET_KEY check |
+| `ALLOW_REGISTRATION` | No | `false` | Set `true` to enable self-signup via `/register` |
+| `OPENAI_API_KEY` | No | — | Enables AI debt analysis |
+| `AI_DAILY_LIMIT` | No | `3` | Max AI calls per non-admin user per day |
+| `DATA_DIR` | No | project root | SQLite DB and `.env` location (local only) |
+| `PORT` | No | `5050` | HTTP port |
+| `DB_USER` | Docker only | — | Postgres username (docker-compose) |
+| `DB_PASSWORD` | Docker only | — | Postgres password (docker-compose) |
+| `DB_NAME` | Docker only | — | Postgres database name (docker-compose) |
+
+---
+
+## Deploy (Fly.io)
+
+The app deploys from `Dockerfile` via `flyctl`. No image registry involved.
+
+### First deploy
 
 ```bash
 flyctl auth login
-flyctl launch --no-deploy          # first time only
-flyctl secrets set SECRET_KEY=<key> APP_ENV=production DATABASE_URL=<postgres-url>
+flyctl launch --no-deploy   # generates fly.toml (already committed — skip overwrite)
+
+# Set required secrets
+flyctl secrets set SECRET_KEY=<generated>
+flyctl secrets set DATABASE_URL=postgresql+asyncpg://user:pass@host/db
+flyctl secrets set APP_ENV=production
+
+# Optional
+flyctl secrets set OPENAI_API_KEY=sk-...
+flyctl secrets set AI_DAILY_LIMIT=3
+
 flyctl deploy
 ```
 
-See `fly.env.example` for the full list of secrets to configure.
+### Subsequent deploys
 
-## CI/CD
+```bash
+flyctl deploy --app personal-debt-tracker
+```
 
-- **CI** (`.github/workflows/ci.yml`): runs `pytest` on every push and pull request.
-- **CD** (`.github/workflows/cd.yml`): builds Docker image, pushes to GHCR on merge to `main`. Tags: `sha-<sha>`, `latest`.
-- **Deploy** (`.github/workflows/deploy-fly.yml`): deploys to Fly.io after CI passes on `main`.
-- **Backup** (`.github/workflows/backup.yml`): exports DB to CSV artifacts every Sunday at 2AM UTC via `flyctl proxy` tunnel.
+Or push to `main` — GitHub Actions deploys automatically after CI passes.
 
-## Settings
+### Scale up (app suspends when idle)
 
-| Section | What it does |
+```bash
+flyctl scale count 1 --app personal-debt-tracker
+```
+
+---
+
+## CI/CD (GitHub Actions)
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | Every push / PR | Runs `pytest` (41 tests) |
+| `deploy-fly.yml` | After CI passes on `main` | Runs `flyctl deploy --remote-only` |
+| `backup.yml` | Every Sunday 2AM UTC + manual | Exports DB to CSV, uploads as artifact (90-day retention) |
+
+No Docker image registry (GHCR) is used. Fly.io builds the image remotely from `Dockerfile`.
+
+### Required GitHub Secrets
+
+| Secret | Used by |
 |---|---|
-| Mode | Toggle OFW mode (exchange rate on/off) |
-| Exchange Rate | Update income → debt currency rate |
-| Currency | Set income currency and debt currency symbol |
+| `FLY_API_TOKEN` | `deploy-fly.yml`, `backup.yml` |
+| `SECRET_KEY` | `backup.yml` (DB export) |
+| `DB_PASSWORD` | `backup.yml` (proxy tunnel to Fly Postgres) |
+
+---
+
+## Settings Reference
+
+| Section | What it controls |
+|---|---|
+| Mode | OFW mode on/off (exchange rate conversion) |
+| Exchange Rate | Income → debt currency rate |
+| Currency | Income currency code + debt currency symbol |
 | Income Config | Monthly salary, expenses, phone installment |
-| OpenAI API Key | Enable AI analysis |
+| OpenAI API Key | Enables AI analysis (stored in `.env` on server) |
 | Change Password | Min 12 characters |
+
+---
 
 ## Monthly Usage
 
