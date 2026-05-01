@@ -1,20 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
 
-<h2>Remittance Planner</h2>
+<h2>{% if ofw_mode %}Remittance Planner{% else %}Budget Planner{% endif %}</h2>
 
 <div class="section">
-  <h3>How much are you sending this month?</h3>
+  <h3>How much are you {% if ofw_mode %}sending{% else %}allocating{% endif %} this month?</h3>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div>
-      <label>{{ income_currency(request) }} Amount</label>
-      <input name="sar" placeholder="5650" style="max-width:160px" value="{{ sar_input }}">
+      <label>Amount ({{ currency_symbol(request) }})</label>
+      <input name="sar" placeholder="{% if ofw_mode %}5650{% else %}50000{% endif %}" style="max-width:160px" value="{{ sar_input }}">
     </div>
+    {% if ofw_mode %}
     <div>
       <label>Current Rate</label>
       <input value="1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ rate }}" disabled style="max-width:160px">
     </div>
+    {% endif %}
     <button type="submit" class="btn btn-primary">Calculate →</button>
     <a href="/settings" style="color:#3b82f6;font-size:.85rem;align-self:center">Change rate</a>
   </form>

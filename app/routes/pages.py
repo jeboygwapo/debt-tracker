@@ -86,11 +86,12 @@ async def dashboard(
     cfg = data.get("income_config", {})
     fixed_pmts = data.get("fixed_payments", {})
 
-    sar_php = cfg.get("sar_to_php", 15.0)
+    ofw_mode = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
     phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
     phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-    budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * sar_php
+    budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * rate
 
     total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
     total_cc = sum(
@@ -159,7 +160,6 @@ async def dashboard(
         "monthly_interest": monthly_interest,
         "debt_free": debt_free,
         "budget_php": budget_php,
-        "rate": sar_php,
         "hist_labels": hist_labels,
         "hist_totals": hist_totals,
         "proj_labels": proj_labels,
@@ -171,6 +171,8 @@ async def dashboard(
         "today": date.today(),
         "has_ai": bool(settings.openai_api_key),
         "username": user.username,
+        "ofw_mode": ofw_mode,
+        "rate": rate,
     })
 
 
@@ -194,11 +196,12 @@ async def add_month_get(
     summary = None
     if saved and saved in data["months"]:
         cfg = data.get("income_config", {})
-        sar_php = cfg.get("sar_to_php", 15.0)
+        _ofw = cfg.get("ofw_mode", True)
+        _rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
         phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
         phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
         base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-        budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * sar_php
+        budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * _rate
         saved_entries = data["months"][saved]
         pay_alloc, cc_priority = allocate_budget(saved_entries, data, budget_php)
         total_due = sum(pay_alloc.values())
@@ -331,9 +334,10 @@ async def remit_get(request: Request, db: AsyncSession = Depends(get_db)):
         return _redirect_login()
 
     cfg = user.income_config or {}
-    rate = cfg.get("sar_to_php", 15.0)
+    _ofw = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
     return templates.TemplateResponse(request, "remit.html", {
-        "active": "remit", "rate": rate, "result": None, "sar_input": "",
+        "active": "remit", "rate": rate, "result": None, "sar_input": "", "ofw_mode": _ofw,
     })
 
 
@@ -346,7 +350,8 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: No
 
     data = await _load_user_data(db, user)
     cfg = data.get("income_config", {})
-    rate = cfg.get("sar_to_php", 15.0)
+    _ofw = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
     form = await request.form()
     sar_input = str(form.get("sar", ""))
     result = None
@@ -368,7 +373,7 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: No
         pass
 
     return templates.TemplateResponse(request, "remit.html", {
-        "active": "remit", "rate": rate, "result": result, "sar_input": sar_input,
+        "active": "remit", "rate": rate, "result": result, "sar_input": sar_input, "ofw_mode": _ofw,
     })
 
 
@@ -403,6 +408,7 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
         "cfg": cfg,
         "currency_sym": cfg.get("currency_symbol", "₱"),
         "income_cur": cfg.get("income_currency", "SAR"),
+        "ofw_mode": cfg.get("ofw_mode", True),
         "msg": None,
         "is_admin": user.is_admin,
     })
@@ -453,6 +459,13 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
             save_env_value(settings.env_file, "OPENAI_API_KEY", key)
             msg = "API key saved."
 
+    elif action == "mode":
+        cfg = dict(user.income_config or {})
+        cfg["ofw_mode"] = form.get("ofw_mode") == "1"
+        await update_income_config(db, user, cfg)
+        request.session["ofw_mode"] = cfg["ofw_mode"]
+        msg = "Mode updated."
+
     elif action == "currency":
         symbol = str(form.get("currency_symbol", "")).strip()
         inc_cur = str(form.get("income_currency", "")).strip()
@@ -487,6 +500,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
         "cfg": cfg,
         "currency_sym": cfg.get("currency_symbol", "₱"),
         "income_cur": cfg.get("income_currency", "SAR"),
+        "ofw_mode": cfg.get("ofw_mode", True),
         "msg": msg,
         "is_admin": user.is_admin,
     })

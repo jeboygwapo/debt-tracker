@@ -20,7 +20,9 @@
   <div class="card"><div class="label">Interest / Month</div><div class="value red">{{ monthly_interest | peso }}</div></div>
   <div class="card"><div class="label">Debt-Free Target</div><div class="value green">{{ debt_free }}</div></div>
   <div class="card"><div class="label">Monthly Budget</div><div class="value blue">{{ budget_php | peso }}</div></div>
+  {% if ofw_mode %}
   <div class="card"><div class="label">{{ income_currency(request) }}→{{ currency_symbol(request) }} Rate</div><div class="value">1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ rate }}</div></div>
+  {% endif %}
 </div>
 
 <div class="charts">

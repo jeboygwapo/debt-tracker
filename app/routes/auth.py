@@ -34,6 +34,7 @@ async def login_post(request: Request, db: AsyncSession = Depends(get_db), _: No
         request.session["is_admin"] = user.is_admin
         request.session["currency_symbol"] = (user.income_config or {}).get("currency_symbol", "₱")
         request.session["income_currency"] = (user.income_config or {}).get("income_currency", "SAR")
+        request.session["ofw_mode"] = (user.income_config or {}).get("ofw_mode", True)
         return RedirectResponse("/", status_code=303)
 
     return templates.TemplateResponse(
@@ -92,4 +93,5 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
     request.session["is_admin"] = user.is_admin
     request.session["currency_symbol"] = "₱"
     request.session["income_currency"] = "SAR"
+    request.session["ofw_mode"] = True
     return RedirectResponse("/debts", status_code=303)

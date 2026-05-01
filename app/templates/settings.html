@@ -5,6 +5,20 @@
 {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
 
 <div class="section">
+  <h3>Mode</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">OFW mode adds exchange rate conversion between your income currency and debt currency.</p>
+  <form method="POST" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="mode">
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:.95rem">
+      <input type="checkbox" name="ofw_mode" value="1" {% if ofw_mode %}checked{% endif %} onchange="this.form.submit()">
+      OFW Mode — I earn in a foreign currency and need exchange rate conversion
+    </label>
+  </form>
+</div>
+
+{% if ofw_mode %}
+<div class="section">
   <h3>{{ income_currency(request) }} → {{ currency_symbol(request) }} Rate</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Check Wise or Western Union for current rate before updating.</p>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
@@ -17,13 +31,15 @@
     <button type="submit" class="btn btn-primary">Update Rate</button>
   </form>
 </div>
+{% endif %}
 
 <div class="section">
   <h3>Currency Settings</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Income currency (what you earn) and debt currency (what you owe).</p>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">{% if ofw_mode %}Income currency (what you earn) and debt currency (what you owe).{% else %}Currency shown on all balances, budgets, and charts.{% endif %}</p>
   <form method="POST" style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="currency">
+    {% if ofw_mode %}
     <div>
       <label>Income Currency</label>
       <select name="income_currency" style="max-width:240px">
@@ -42,8 +58,9 @@
         <option value="MYR" {% if inc == 'MYR' %}selected{% endif %}>MYR — Malaysian Ringgit</option>
       </select>
     </div>
+    {% endif %}
     <div>
-      <label>Debt Currency Symbol</label>
+      <label>{% if ofw_mode %}Debt Currency Symbol{% else %}Currency Symbol{% endif %}</label>
       <select name="currency_symbol" style="max-width:240px">
         {% set cur = currency_sym %}
         <option value="₱" {% if cur == '₱' %}selected{% endif %}>₱ Philippine Peso (PHP)</option>
@@ -60,7 +77,7 @@
         <option value="BD" {% if cur == 'BD' %}selected{% endif %}>BD Bahraini Dinar (BHD)</option>
       </select>
     </div>
-    <button type="submit" class="btn btn-primary">Update Currencies</button>
+    <button type="submit" class="btn btn-primary">{% if ofw_mode %}Update Currencies{% else %}Update Currency{% endif %}</button>
   </form>
 </div>
 
