@@ -55,7 +55,7 @@ def _parse_entries_from_form(form, debts: list) -> list[dict]:
 
 
 def _redirect_login():
-    return RedirectResponse("/login", status_code=302)
+    return RedirectResponse("/welcome", status_code=302)
 
 
 async def _load_user_data(db: AsyncSession, user: User) -> dict:

@@ -38,7 +38,7 @@ async def test_unauthenticated_redirect():
     ) as c:
         r = await c.get("/")
         assert r.status_code == 302
-        assert "/login" in r.headers["location"]
+        assert "/welcome" in r.headers["location"]
 
 
 @pytest.mark.anyio

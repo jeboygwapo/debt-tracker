@@ -11,6 +11,13 @@ from ..templating import templates
 router = APIRouter()
 
 
+@router.get("/welcome", response_class=HTMLResponse)
+async def landing(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse(request, "landing.html", {})
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
     if request.session.get("user_id"):
