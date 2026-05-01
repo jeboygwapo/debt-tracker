@@ -169,6 +169,11 @@ python scripts/init_db.py
 - Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
 - Input validation: balance/min_due/payment fields have `type=number min=0` to block negatives
 - Login: shows real "Create Account" link when `allow_registration=True`, disabled Coming Soon button otherwise
+- Landing page: `/welcome` — public, unauthenticated entry point; authenticated users redirect to `/`; unauthenticated hits on `/` redirect to `/welcome` via `_redirect_login()`
+- Progress bar: dashboard shows `pct_paid`/`paid_off`/`peak_debt` — computed from `max(hist_totals)` vs `total_now`
+- Confetti: canvas-based, fires on card `done=True` and pct milestones 25/50/75/100; localStorage prevents re-trigger per month
+- PDF report: `GET /report/{month}` — clean print-ready HTML, no deps; "Print Report" button opens in new tab from dashboard
+- Theme persistence: inline `<script>` in `<head>` on all standalone pages (login, register, landing) applies localStorage theme before render — eliminates flash
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
 - AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
 - asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
@@ -194,3 +199,4 @@ python scripts/init_db.py
 1. **Forgot password** — lowest priority, contact admin covers it for now
 2. **Chart theme refresh** — charts don't update colors on theme toggle (minor polish)
 3. **Add month overwrite warning** — no warning when re-submitting an existing month
+4. **Report page interest column** — currently shows `—` for all rows; needs APR from `data["debts"]` passed into report context

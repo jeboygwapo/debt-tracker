@@ -14,7 +14,11 @@ Personal debt repayment tracker for managing credit card payoff, fixed loans, an
 - **Avalanche payoff engine** — minimums on all, extra cash attacks highest-APR card first
 - **OFW mode** — toggle in Settings; converts income currency → debt currency at saved rate; when off, budget stays in local currency with no conversion
 - **Empty states** — all pages guide new users with CTAs when no data exists yet
+- **Payoff progress bar** — dashboard shows % paid off from peak debt with milestone messages
+- **Confetti & milestone toasts** — celebrates card payoffs and 25/50/75/100% progress milestones
+- **Print / PDF report** — `/report/{month}` renders a clean print-ready page; save as PDF via browser
 - **AI Analysis** — optional OpenAI `gpt-4o-mini` debt summary; 3 calls/day per user (admins exempt, cached hits free)
+- **Public landing page** — `/welcome` for unauthenticated visitors with feature overview
 - **Multi-user** — admin dashboard for user management; self-signup gated by `ALLOW_REGISTRATION`
 - **Weekly DB backup** — GitHub Actions exports all data to CSV artifacts every Sunday
 
