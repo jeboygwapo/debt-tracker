@@ -103,6 +103,7 @@ See `fly.env.example` for the full template with descriptions.
 | `ALLOW_REGISTRATION` | No | `false` | Set `true` to enable self-signup via `/register` |
 | `OPENAI_API_KEY` | No | — | Enables AI debt analysis |
 | `AI_DAILY_LIMIT` | No | `3` | Max AI calls per non-admin user per day |
+| `SENTRY_DSN` | No | — | Sentry error monitoring DSN (leave blank to disable) |
 | `DATA_DIR` | No | project root | SQLite DB and `.env` location (local only) |
 | `PORT` | No | `5050` | HTTP port |
 | `DB_USER` | Docker only | — | Postgres username (docker-compose) |

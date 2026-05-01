@@ -114,6 +114,13 @@ python -m pytest tests/ -v
 - `alembic/versions/` — never edit manually, generate with `alembic revision`
 - Session secret in `.env` (`SECRET_KEY`) — never log or expose
 
+## Security & Hardening
+- Login rate limit: `app/ratelimit.py` — 5 attempts/15min per IP, 15min lockout, in-memory dict + threading.Lock
+- Session: 8-hour `max_age`, `https_only=True` in production, `same_site=lax`
+- Request size: `RequestSizeLimitMiddleware` — 413 if `Content-Length > 1MB`
+- `/docs` disabled when `APP_ENV=production`
+- Sentry: optional, init via `SENTRY_DSN` env var in `create_app()`, silent if SDK missing
+
 ## Settings Actions (POST /settings, action= field)
 - `mode` — toggle `ofw_mode` bool in income_config + session
 - `rate` — update `sar_to_php` in income_config
