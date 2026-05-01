@@ -24,10 +24,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Start Fly Postgres proxy
+        run: flyctl proxy 5432:5432 -a jayvee-debt-tracker-db &
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for proxy
+        run: sleep 5
+
       - name: Export DB to CSV
         run: python scripts/export_to_csv.py --out-dir ./backup-out
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: "postgresql+asyncpg://jayvee_debt_tracker:${{ secrets.DB_PASSWORD }}@localhost:5432/jayvee_debt_tracker"
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
 
       - name: Upload backup as artifact
