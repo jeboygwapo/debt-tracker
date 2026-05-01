@@ -327,5 +327,97 @@ function loadAnalysis(force = false) {
 }
 loadAnalysis();
 {% endif %}
+
+// ── Confetti & Milestones ──────────────────────────────────────────────────
+const VIEWING_MONTH = {{ viewing | tojson }};
+const PCT_PAID      = {{ pct_paid }};
+const DONE_CARDS    = {{ status_rows | selectattr('done') | map(attribute='name') | list | tojson }};
+
+function launchConfetti(duration = 3000) {
+  const canvas = document.createElement('canvas');
+  Object.assign(canvas.style, {
+    position:'fixed',top:0,left:0,width:'100%',height:'100%',
+    pointerEvents:'none',zIndex:9999
+  });
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const pieces = Array.from({length: 120}, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * -canvas.height,
+    w: Math.random() * 10 + 5,
+    h: Math.random() * 5 + 3,
+    color: ['#6366f1','#22c55e','#f59e0b','#ec4899','#3b82f6','#14b8a6'][Math.floor(Math.random()*6)],
+    rot: Math.random() * 360,
+    vx: (Math.random() - 0.5) * 3,
+    vy: Math.random() * 4 + 2,
+    vr: (Math.random() - 0.5) * 6,
+  }));
+  const end = Date.now() + duration;
+  (function frame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if (p.y > canvas.height) { p.y = -20; p.x = Math.random() * canvas.width; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+    if (Date.now() < end) requestAnimationFrame(frame);
+    else canvas.remove();
+  })();
+}
+
+function showToast(msg, sub) {
+  const t = document.createElement('div');
+  Object.assign(t.style, {
+    position:'fixed',top:'24px',left:'50%',transform:'translateX(-50%)',
+    background:'#1e293b',border:'1px solid #22c55e',color:'#e2e8f0',
+    borderRadius:'12px',padding:'16px 24px',zIndex:10000,textAlign:'center',
+    boxShadow:'0 8px 32px rgba(0,0,0,.4)',maxWidth:'320px',width:'90%',
+    animation:'slideDown .4s ease'
+  });
+  t.innerHTML = `<div style="font-size:1.4rem;margin-bottom:4px">${msg}</div><div style="font-size:.85rem;color:#94a3b8">${sub}</div>`;
+  const style = document.createElement('style');
+  style.textContent = '@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+  document.head.appendChild(style);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+(function checkMilestones() {
+  if (!VIEWING_MONTH) return;
+  const key = `dt_celebrated_${VIEWING_MONTH}`;
+  const celebrated = JSON.parse(localStorage.getItem(key) || '{}');
+
+  // Paid-off card
+  DONE_CARDS.forEach(name => {
+    const cKey = `done_${name}`;
+    if (!celebrated[cKey]) {
+      celebrated[cKey] = true;
+      launchConfetti(4000);
+      showToast('🎉 Card Paid Off!', `${name} is at ₱0 — amazing work!`);
+    }
+  });
+
+  // Progress milestones
+  [25, 50, 75, 100].forEach(milestone => {
+    const mKey = `pct_${milestone}`;
+    if (PCT_PAID >= milestone && !celebrated[mKey]) {
+      celebrated[mKey] = true;
+      launchConfetti(3500);
+      showToast(
+        milestone === 100 ? '🏆 DEBT FREE!' : `🎯 ${milestone}% Paid Off!`,
+        milestone === 100 ? 'You did it — incredible discipline!' : 'Keep going — you\'re crushing it!'
+      );
+    }
+  });
+
+  localStorage.setItem(key, JSON.stringify(celebrated));
+})();
 </script>
 {% endblock %}
