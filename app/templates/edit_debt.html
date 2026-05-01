@@ -12,6 +12,7 @@
 
 <div class="section">
   <form method="POST" action="/debts/{{ debt.id }}/edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div class="row">
       <div>
         <label>Name *</label>
@@ -48,7 +49,7 @@
     <div id="fixed-fields-edit" style="display:{{ 'block' if debt.is_fixed else 'none' }}">
       <div class="row">
         <div>
-          <label>Fixed Monthly Amount (₱)</label>
+          <label>Fixed Monthly Amount ({{ currency_symbol(request) }})</label>
           <input name="fixed_monthly" type="number" step="0.01" value="{{ debt.fixed_monthly or '' }}">
         </div>
         <div>
@@ -58,11 +59,11 @@
       </div>
       <div class="row">
         <div>
-          <label>Reduced Amount After Threshold (₱)</label>
+          <label>Reduced Amount After Threshold ({{ currency_symbol(request) }})</label>
           <input name="fixed_reduced_monthly" type="number" step="0.01" value="{{ debt.fixed_reduced_monthly or '' }}">
         </div>
         <div>
-          <label>Balance Threshold for Reduced Amount (₱)</label>
+          <label>Balance Threshold for Reduced Amount ({{ currency_symbol(request) }})</label>
           <input name="fixed_reduced_threshold" type="number" step="0.01" value="{{ debt.fixed_reduced_threshold or '' }}">
         </div>
       </div>
@@ -89,6 +90,7 @@
     <input id="confirm-name-input" placeholder="{{ debt.name }}" style="max-width:300px;margin-bottom:10px">
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <form method="POST" action="/debts/{{ debt.id }}/delete" id="delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
         <button type="submit" id="confirm-delete-btn" class="btn" style="background:#b91c1c;color:#fff" disabled>
           Yes, Delete Permanently
         </button>

@@ -20,7 +20,7 @@
   <div class="card"><div class="label">Interest / Month</div><div class="value red">{{ monthly_interest | peso }}</div></div>
   <div class="card"><div class="label">Debt-Free Target</div><div class="value green">{{ debt_free }}</div></div>
   <div class="card"><div class="label">Monthly Budget</div><div class="value blue">{{ budget_php | peso }}</div></div>
-  <div class="card"><div class="label">SAR→PHP Rate</div><div class="value">1 SAR = ₱{{ rate }}</div></div>
+  <div class="card"><div class="label">SAR→{{ currency_symbol(request) }} Rate</div><div class="value">1 SAR = {{ currency_symbol(request) }}{{ rate }}</div></div>
 </div>
 
 <div class="charts">
@@ -200,7 +200,7 @@ function buildTrend(type) {
       plugins: { legend: { labels: { color: c.muted } } },
       scales: {
         x: { ticks: { color: c.tick, maxTicksLimit: 10 }, grid: { color: c.grid } },
-        y: { ticks: { color: c.tick, callback: v => '₱' + v.toLocaleString() }, grid: { color: c.grid } }
+        y: { ticks: { color: c.tick, callback: v => window.CURRENCY_SYMBOL + v.toLocaleString() }, grid: { color: c.grid } }
       }
     }
   });
@@ -227,7 +227,7 @@ function buildDonut(type) {
           : { position: 'bottom', labels: { color: c.muted, font: { size: 11 }, padding: 8 } }
       },
       ...(isBar ? { scales: {
-        x: { ticks: { color: c.tick, callback: v => '₱'+v.toLocaleString() }, grid: { color: c.grid } },
+        x: { ticks: { color: c.tick, callback: v => window.CURRENCY_SYMBOL+v.toLocaleString() }, grid: { color: c.grid } },
         y: { ticks: { color: c.tick } , grid: { color: c.grid } }
       }} : {})
     }

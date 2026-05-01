@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import verify_password, settings
+from ..csrf import validate_csrf
 from ..db.base import get_db
 from ..db.crud import create_user, get_user_by_username
 from ..templating import templates
@@ -21,7 +22,7 @@ async def login_get(request: Request):
 
 
 @router.post("/login")
-async def login_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def login_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
@@ -31,6 +32,7 @@ async def login_post(request: Request, db: AsyncSession = Depends(get_db)):
         request.session["user_id"] = user.id
         request.session["username"] = user.username
         request.session["is_admin"] = user.is_admin
+        request.session["currency_symbol"] = (user.income_config or {}).get("currency_symbol", "₱")
         return RedirectResponse("/", status_code=303)
 
     return templates.TemplateResponse(
@@ -56,7 +58,7 @@ async def register_get(request: Request):
 
 
 @router.post("/register")
-async def register_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def register_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     if not settings.allow_registration:
         return RedirectResponse("/login", status_code=302)
 
@@ -87,4 +89,5 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db)):
     request.session["user_id"] = user.id
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
+    request.session["currency_symbol"] = "₱"
     return RedirectResponse("/debts", status_code=303)

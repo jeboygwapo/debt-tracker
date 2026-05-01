@@ -147,6 +147,7 @@ input:disabled{color:var(--muted)}
 {% block content %}{% endblock %}
 </div>
 <script>
+window.CURRENCY_SYMBOL = "{{ currency_symbol(request) }}";
 function toggleNav() {
   document.getElementById('nav-links').classList.toggle('open');
 }

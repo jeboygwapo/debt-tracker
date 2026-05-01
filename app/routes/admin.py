@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, Request
+
+from ..csrf import validate_csrf
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +38,7 @@ async def admin_index(request: Request, msg: str = None, db: AsyncSession = Depe
 
 
 @router.post("/users/create")
-async def admin_create_user(request: Request, db: AsyncSession = Depends(get_db)):
+async def admin_create_user(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     user, redirect = await _require_admin(request, db)
     if redirect:
         return redirect
@@ -72,7 +74,7 @@ async def admin_create_user(request: Request, db: AsyncSession = Depends(get_db)
 
 
 @router.post("/users/{target_id}/reset-password")
-async def admin_reset_password(request: Request, target_id: int, db: AsyncSession = Depends(get_db)):
+async def admin_reset_password(request: Request, target_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     user, redirect = await _require_admin(request, db)
     if redirect:
         return redirect
@@ -91,7 +93,7 @@ async def admin_reset_password(request: Request, target_id: int, db: AsyncSessio
 
 
 @router.post("/users/{target_id}/delete")
-async def admin_delete_user(request: Request, target_id: int, db: AsyncSession = Depends(get_db)):
+async def admin_delete_user(request: Request, target_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     user, redirect = await _require_admin(request, db)
     if redirect:
         return redirect

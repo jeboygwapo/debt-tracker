@@ -8,9 +8,10 @@
   <h3>SAR → PHP Rate</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Check Wise or Western Union for current rate before updating.</p>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="rate">
     <div>
-      <label>Current: 1 SAR = ₱{{ cfg.get('sar_to_php', 15.0) }}</label>
+      <label>Current: 1 SAR = {{ currency_symbol(request) }}{{ cfg.get('sar_to_php', 15.0) }}</label>
       <input name="rate" placeholder="{{ cfg.get('sar_to_php', 15.0) }}" style="max-width:160px">
     </div>
     <button type="submit" class="btn btn-primary">Update Rate</button>
@@ -18,9 +19,38 @@
 </div>
 
 <div class="section">
+  <h3>Debt Currency</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Symbol shown on all balances, budgets, and charts.</p>
+  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="currency">
+    <div>
+      <label>Currency Symbol</label>
+      <select name="currency_symbol" style="max-width:220px">
+        {% set cur = currency_sym %}
+        <option value="₱" {% if cur == '₱' %}selected{% endif %}>₱ Philippine Peso (PHP)</option>
+        <option value="$" {% if cur == '$' %}selected{% endif %}>$ US Dollar (USD)</option>
+        <option value="€" {% if cur == '€' %}selected{% endif %}>€ Euro (EUR)</option>
+        <option value="£" {% if cur == '£' %}selected{% endif %}>£ British Pound (GBP)</option>
+        <option value="¥" {% if cur == '¥' %}selected{% endif %}>¥ Japanese Yen (JPY)</option>
+        <option value="د.إ" {% if cur == 'د.إ' %}selected{% endif %}>د.إ UAE Dirham (AED)</option>
+        <option value="S$" {% if cur == 'S$' %}selected{% endif %}>S$ Singapore Dollar (SGD)</option>
+        <option value="RM" {% if cur == 'RM' %}selected{% endif %}>RM Malaysian Ringgit (MYR)</option>
+        <option value="HK$" {% if cur == 'HK$' %}selected{% endif %}>HK$ Hong Kong Dollar (HKD)</option>
+        <option value="KD" {% if cur == 'KD' %}selected{% endif %}>KD Kuwaiti Dinar (KWD)</option>
+        <option value="QR" {% if cur == 'QR' %}selected{% endif %}>QR Qatari Riyal (QAR)</option>
+        <option value="BD" {% if cur == 'BD' %}selected{% endif %}>BD Bahraini Dinar (BHD)</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Update Currency</button>
+  </form>
+</div>
+
+<div class="section">
   <h3>OpenAI API Key</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Required for AI analysis. Key stored locally in .env file.</p>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="apikey">
     <div style="flex:1;min-width:260px">
       <label>API Key (sk-...)</label>
@@ -33,6 +63,7 @@
 <div class="section">
   <h3>Change Password</h3>
   <form method="POST" style="display:flex;flex-direction:column;gap:12px;max-width:360px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="password">
     <div>
       <label>Current Password</label>
@@ -56,6 +87,7 @@
   <h3>Income Config</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">SAR amounts. Budget = (Salary − Expenses − Phone) × Rate.</p>
   <form method="POST" style="max-width:420px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="income">
     <div style="margin-bottom:12px">
       <label>Monthly Salary (SAR)</label>
@@ -82,7 +114,7 @@
       </strong>
       &nbsp;→&nbsp;
       <strong style="color:#22c55e">
-        ₱{{ '{:,.0f}'.format((cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) * cfg.get('sar_to_php', 15)) }}
+        {{ currency_symbol(request) }}{{ '{:,.0f}'.format((cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) * cfg.get('sar_to_php', 15)) }}
       </strong>
     </div>
     <button type="submit" class="btn btn-primary">Update Income Config</button>

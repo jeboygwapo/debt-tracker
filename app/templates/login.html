@@ -26,6 +26,7 @@ button:hover{background:#4f46e5}
   <h2>💳 Debt Tracker</h2>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <label>Username</label>
     <input name="username" type="text" autofocus autocomplete="username">
     <label>Password</label>

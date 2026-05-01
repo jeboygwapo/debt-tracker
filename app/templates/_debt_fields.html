@@ -98,12 +98,12 @@ function syncPaymentRefs() {
   document.querySelectorAll('[id^="bal_"]').forEach(el => {
     const i = el.id.split('_')[1];
     const ref = document.getElementById('ref_bal_' + i);
-    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+    if (ref && el.value) ref.textContent = window.CURRENCY_SYMBOL + parseFloat(el.value).toLocaleString(undefined, {minimumFractionDigits:2});
   });
   document.querySelectorAll('[id^="mn_"]').forEach(el => {
     const i = el.id.split('_')[1];
     const ref = document.getElementById('ref_mn_' + i);
-    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+    if (ref && el.value) ref.textContent = window.CURRENCY_SYMBOL + parseFloat(el.value).toLocaleString(undefined, {minimumFractionDigits:2});
   });
 }
 document.querySelectorAll('[id^="bal_"],[id^="mn_"]').forEach(el => el.addEventListener('input', syncPaymentRefs));

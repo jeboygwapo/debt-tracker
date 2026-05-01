@@ -21,6 +21,7 @@ from ..db.crud import (
     upsert_entry,
 )
 from ..db.models import User
+from ..csrf import validate_csrf
 from ..dependencies import NotAuthenticated, get_current_user
 from ..services.planner import allocate_budget, compute_plan, latest_month
 from ..templating import templates
@@ -200,7 +201,7 @@ async def add_month_get(
 
 
 @router.post("/add")
-async def add_month_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def add_month_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -292,6 +293,7 @@ async def edit_month_post(
     request: Request,
     month: str,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
@@ -347,7 +349,7 @@ async def remit_get(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/remit", response_class=HTMLResponse)
-async def remit_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -406,16 +408,18 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
     except NotAuthenticated:
         return _redirect_login()
 
+    cfg = user.income_config or {}
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
-        "cfg": user.income_config or {},
+        "cfg": cfg,
+        "currency_sym": cfg.get("currency_symbol", "₱"),
         "msg": None,
         "is_admin": user.is_admin,
     })
 
 
 @router.post("/settings", response_class=HTMLResponse)
-async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -457,6 +461,17 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
             save_env_value(settings.env_file, "OPENAI_API_KEY", key)
             msg = "API key saved."
 
+    elif action == "currency":
+        symbol = str(form.get("currency_symbol", "")).strip()
+        if symbol:
+            cfg = dict(user.income_config or {})
+            cfg["currency_symbol"] = symbol
+            await update_income_config(db, user, cfg)
+            request.session["currency_symbol"] = symbol
+            msg = f"Currency set to {symbol}"
+        else:
+            msg = "Invalid currency symbol."
+
     elif action == "password":
         current = str(form.get("current_password", ""))
         new_pw = str(form.get("new_password", ""))
@@ -471,9 +486,11 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
             await update_user_password(db, user, new_pw)
             msg = "✓ Password updated."
 
+    cfg = user.income_config or {}
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
-        "cfg": user.income_config or {},
+        "cfg": cfg,
+        "currency_sym": cfg.get("currency_symbol", "₱"),
         "msg": msg,
         "is_admin": user.is_admin,
     })

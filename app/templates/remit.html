@@ -6,13 +6,14 @@
 <div class="section">
   <h3>How much are you sending this month?</h3>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div>
       <label>SAR Amount</label>
       <input name="sar" placeholder="5650" style="max-width:160px" value="{{ sar_input }}">
     </div>
     <div>
       <label>Current Rate</label>
-      <input value="1 SAR = ₱{{ rate }}" disabled style="max-width:160px">
+      <input value="1 SAR = {{ currency_symbol(request) }}{{ rate }}" disabled style="max-width:160px">
     </div>
     <button type="submit" class="btn btn-primary">Calculate →</button>
     <a href="/settings" style="color:#3b82f6;font-size:.85rem;align-self:center">Change rate</a>

@@ -40,6 +40,7 @@
         {% if u.id != current_user_id %}
         <form method="POST" action="/admin/users/{{ u.id }}/delete" style="display:inline"
               onsubmit="return confirm('Delete user {{ u.username }}? All their data will be permanently removed.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
           <button type="submit" class="qbtn qbtn-red">Delete</button>
         </form>
         {% endif %}
@@ -55,6 +56,7 @@
   <div style="background:var(--surface);border-radius:12px;padding:24px;max-width:380px;width:90%;border:1px solid var(--border)">
     <h3 style="margin-bottom:16px;font-size:1rem">Reset Password — <span id="reset-username"></span></h3>
     <form id="reset-form" method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
       <div style="margin-bottom:12px">
         <label>New Password (min 12 chars)</label>
         <input id="reset-pw" name="password" type="password" autocomplete="new-password">
@@ -76,6 +78,7 @@
 <div class="section">
   <h3>Create New User</h3>
   <form method="POST" action="/admin/users/create" style="max-width:420px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div style="margin-bottom:12px">
       <label>Username</label>
       <input name="username" placeholder="e.g. janedoe" autocomplete="off">

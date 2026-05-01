@@ -32,6 +32,7 @@ button:hover{background:#4f46e5}
   <p class="sub">Create your account</p>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <label>Username</label>
     <input name="username" type="text" autofocus autocomplete="username" minlength="3">
     <label>Password</label>

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..csrf import validate_csrf
 from ..db.base import get_db
 from ..db.crud import create_debt, delete_debt, get_debt_by_id, get_debts, reorder_debts, update_debt
 from ..dependencies import NotAuthenticated, get_current_user
@@ -36,7 +37,7 @@ async def debts_list(
 
 
 @router.post("", response_class=HTMLResponse)
-async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
+async def debts_add(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -119,6 +120,7 @@ async def debt_edit_post(
     request: Request,
     debt_id: int,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
@@ -170,6 +172,7 @@ async def debt_delete(
     request: Request,
     debt_id: int,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
@@ -183,7 +186,7 @@ async def debt_delete(
 
 
 @router.post("/reorder")
-async def debts_reorder(request: Request, db: AsyncSession = Depends(get_db)):
+async def debts_reorder(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:

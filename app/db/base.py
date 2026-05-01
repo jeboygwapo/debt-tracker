@@ -9,7 +9,13 @@ class Base(DeclarativeBase):
 
 
 connect_args = {"ssl": False} if "asyncpg" in settings.database_url else {}
-engine = create_async_engine(settings.database_url, echo=False, connect_args=connect_args)
+engine = create_async_engine(
+    settings.database_url,
+    echo=False,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
