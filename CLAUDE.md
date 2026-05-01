@@ -166,6 +166,9 @@ python scripts/init_db.py
 - Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python3 -m pytest tests/ -v`
 - Currency: user-selectable debt currency symbol stored in `income_config["currency_symbol"]` + session; set via Settings → Debt Currency; Jinja2 `currency_symbol(request)` global + `| peso` filter both read from session; defaults to ₱
 - OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
+- Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
+- Input validation: balance/min_due/payment fields have `type=number min=0` to block negatives
+- Login: shows real "Create Account" link when `allow_registration=True`, disabled Coming Soon button otherwise
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
 - AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
 - asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
@@ -189,3 +192,5 @@ python scripts/init_db.py
 
 ## Pending Work (next session)
 1. **Forgot password** — lowest priority, contact admin covers it for now
+2. **Chart theme refresh** — charts don't update colors on theme toggle (minor polish)
+3. **Add month overwrite warning** — no warning when re-submitting an existing month

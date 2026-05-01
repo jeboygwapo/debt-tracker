@@ -12,7 +12,8 @@ Personal debt repayment tracker for managing credit card payoff, fixed loans, an
 - **Balance Trend & Breakdown** — Chart.js line/bar/donut charts with projected payoff curve
 - **Budget / Remittance Planner** — enter amount available, see allocation across all cards
 - **Avalanche payoff engine** — minimums on all, extra cash attacks highest-APR card first
-- **OFW mode** — toggle in Settings; converts income currency → debt currency at saved rate; when off, budget stays in local currency
+- **OFW mode** — toggle in Settings; converts income currency → debt currency at saved rate; when off, budget stays in local currency with no conversion
+- **Empty states** — all pages guide new users with CTAs when no data exists yet
 - **AI Analysis** — optional OpenAI `gpt-4o-mini` debt summary; 3 calls/day per user (admins exempt, cached hits free)
 - **Multi-user** — admin dashboard for user management; self-signup gated by `ALLOW_REGISTRATION`
 - **Weekly DB backup** — GitHub Actions exports all data to CSV artifacts every Sunday
