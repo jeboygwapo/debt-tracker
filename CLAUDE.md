@@ -150,15 +150,7 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
-## Deploy Target
-- Platform: Fly.io (`jayvee-debt-tracker.fly.dev`)
-- Region: Singapore (`sin`)
-- Postgres: Fly Managed Postgres
-- Config: `fly.toml` at project root
-- Secrets managed via `flyctl secrets set` (see `fly.env.example`)
-- Deploy pipeline: `.github/workflows/deploy-fly.yml` — triggers after CI passes on `main`
-
-## Current State (as of 2026-04-30)
+## Current State (as of 2026-05-01)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
 - Income config fully editable in Settings (salary, expenses, phone installment)
@@ -167,6 +159,24 @@ python scripts/init_db.py
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
+- Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python3 -m pytest tests/ -v`
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
-- Next: merge feature/multi-user-registration → develop → main
+- AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
+- asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
+- auto_stop_machines = 'suspend' (not 'stop') — ~1-2s resume vs ~8-10s cold boot
+- Data migrated from local SQLite → Fly.io Postgres via scripts/migrate_sqlite_to_pg.py
+
+## Deploy Target
+- Platform: Fly.io (`personal-debt-tracker.fly.dev`) — renamed from jayvee-debt-tracker
+- Region: Singapore (`sin`)
+- Postgres: Fly Unmanaged Postgres (`jayvee-debt-tracker-db`, DB name: `jayvee_debt_tracker`)
+- Config: `fly.toml` at project root
+- Secrets managed via `flyctl secrets set` (see `fly.env.example`)
+- App currently SCALED TO ZERO (intentional) — run `flyctl scale count 1 --app personal-debt-tracker` to restore
+
+## Pending Work (next session)
+1. **CSRF protection** — no tokens on ANY POST route (Security Engineer, critical)
+2. **Portfolio card** — update URL → https://personal-debt-tracker.fly.dev, status → "Live"
+3. **Code quality** — DB transaction rollbacks, duplicate form parse logic, settings action enum
+4. **Tests** — add CSRF, rate limit, edge case coverage
+5. **fly.env.example** — document DATABASE_URL, DATA_DIR, APP_ENV, AI_DAILY_LIMIT
