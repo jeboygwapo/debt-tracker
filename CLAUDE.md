@@ -204,6 +204,3 @@ python scripts/init_db.py
 
 ## Pending Work (next session)
 1. **Forgot password** — lowest priority, contact admin covers it for now
-2. **Chart theme refresh** — charts don't update colors on theme toggle (minor polish)
-3. **Add month overwrite warning** — no warning when re-submitting an existing month
-4. **Report page interest column** — currently shows `—` for all rows; needs APR from `data["debts"]` passed into report context
