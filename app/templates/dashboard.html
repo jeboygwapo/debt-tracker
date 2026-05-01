@@ -12,6 +12,7 @@
     {% endfor %}
   </select>
   <a href="/edit/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem">✏️ Edit</a>
+  {% if viewing %}<a href="/report/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem" target="_blank">🖨️ Print Report</a>{% endif %}
 </div>
 
 <div class="grid">

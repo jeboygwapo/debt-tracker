@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debt Report — {{ month }}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;color:#0f172a;background:#fff;font-size:13px;line-height:1.5}
+
+/* SCREEN STYLES */
+@media screen {
+  body{background:#f1f5f9;padding:24px}
+  .page{background:#fff;max-width:860px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.1);overflow:hidden}
+  .no-print{display:flex;gap:10px;max-width:860px;margin:0 auto 16px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;font-size:.875rem;font-weight:600;text-decoration:none;border:none;cursor:pointer}
+  .btn-primary{background:#6366f1;color:#fff}.btn-primary:hover{background:#4f46e5}
+  .btn-back{background:#1e293b;color:#e2e8f0}.btn-back:hover{background:#334155}
+}
+
+/* HEADER */
+.report-header{background:#0f172a;color:#e2e8f0;padding:28px 32px}
+.report-header h1{font-size:1.3rem;font-weight:800;margin-bottom:4px}
+.report-header p{font-size:.8rem;color:#94a3b8}
+.report-meta{display:flex;gap:24px;margin-top:14px;flex-wrap:wrap}
+.meta-item{font-size:.75rem;color:#94a3b8}
+.meta-item strong{color:#e2e8f0;display:block;font-size:.9rem}
+
+/* PROGRESS BAR */
+.progress-section{padding:20px 32px;border-bottom:1px solid #e2e8f0}
+.progress-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:4px}
+.progress-label{font-size:.85rem;font-weight:600;color:#475569}
+.progress-pct{font-size:1.4rem;font-weight:800;color:#16a34a}
+.progress-bar-bg{background:#e2e8f0;border-radius:99px;height:10px;overflow:hidden}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:99px}
+.progress-sub{font-size:.75rem;color:#64748b;margin-top:5px}
+
+/* SUMMARY GRID */
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0;border-bottom:1px solid #e2e8f0}
+.summary-item{padding:16px 24px;border-right:1px solid #e2e8f0}
+.summary-item:last-child{border-right:none}
+.summary-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:4px}
+.summary-value{font-size:1.05rem;font-weight:700}
+.red{color:#dc2626}.green{color:#16a34a}.yellow{color:#d97706}.blue{color:#2563eb}
+
+/* TABLES */
+.section{padding:20px 32px}
+.section h2{font-size:.9rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #e2e8f0}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{text-align:left;padding:7px 10px;background:#f8fafc;color:#475569;font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0}
+td{padding:7px 10px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.attack-badge{background:#fef3c7;color:#92400e;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.amount{font-variant-numeric:tabular-nums;font-weight:600}
+.pay-col{color:#16a34a;font-weight:700}
+.muted{color:#94a3b8}
+
+/* FOOTER */
+.report-footer{padding:16px 32px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:.72rem;color:#94a3b8}
+
+/* PRINT */
+@media print {
+  body{background:#fff;padding:0}
+  .no-print{display:none!important}
+  .page{box-shadow:none;border-radius:0}
+  @page{margin:12mm 14mm;size:A4}
+}
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <button class="btn btn-primary" onclick="window.print()">🖨️ Print / Save PDF</button>
+  <a href="/?month={{ month }}" class="btn btn-back">← Back to Dashboard</a>
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="report-header">
+    <h1>💳 Debt Tracker — Monthly Report</h1>
+    <p>Private financial summary</p>
+    <div class="report-meta">
+      <div class="meta-item"><strong>{{ month }}</strong>Period</div>
+      <div class="meta-item"><strong>{{ username }}</strong>Account</div>
+      <div class="meta-item"><strong>{{ debt_free }}</strong>Est. Debt-Free</div>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  {% if peak_debt > 0 %}
+  <div class="progress-section">
+    <div class="progress-header">
+      <span class="progress-label">Overall Payoff Progress</span>
+      <span class="progress-pct">{{ pct_paid }}% paid off</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" style="width:{{ [pct_paid,100]|min }}%"></div>
+    </div>
+    <p class="progress-sub">Reduced from peak {{ peak_debt | peso }} → now {{ total_now | peso }} &nbsp;·&nbsp; {{ paid_off | peso }} eliminated</p>
+  </div>
+  {% endif %}
+
+  <!-- SUMMARY -->
+  <div class="summary-grid">
+    <div class="summary-item">
+      <div class="summary-label">Total Debt</div>
+      <div class="summary-value red">{{ total_now | peso }}</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Interest / Month</div>
+      <div class="summary-value red">{{ monthly_interest | peso }}</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Monthly Budget</div>
+      <div class="summary-value blue">{{ budget_php | peso }}</div>
+    </div>
+    {% if ofw_mode %}
+    <div class="summary-item">
+      <div class="summary-label">Exchange Rate</div>
+      <div class="summary-value">{{ rate }}</div>
+    </div>
+    {% endif %}
+    <div class="summary-item">
+      <div class="summary-label">Debt-Free Target</div>
+      <div class="summary-value green">{{ debt_free }}</div>
+    </div>
+  </div>
+
+  <!-- PAYMENT PLAN -->
+  <div class="section">
+    <h2>Payment Allocation — Avalanche Method</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Card / Loan</th>
+          <th>Balance</th>
+          <th>Min Due</th>
+          <th>→ Pay This Month</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n, e in entries.items() %}
+          {% if n in fixed_pmts and (e.get('balance') or 0) > 0 %}
+          <tr>
+            <td>{{ n }}</td>
+            <td class="amount">{{ (e.get('balance') or 0) | peso }}</td>
+            <td class="amount">{{ (e.get('min_due') or 0) | peso }}</td>
+            <td class="amount pay-col">{{ pay_alloc.get(n, 0) | peso }}</td>
+            <td class="muted">Fixed</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+        {% for n, bal, mn, apr, interest in cc_priority %}
+        {% set alloc = pay_alloc.get(n, 0) %}
+        {% set extra = alloc - mn %}
+        <tr>
+          <td>{{ n }}{% if loop.first %} <span class="attack-badge">Attack</span>{% endif %}</td>
+          <td class="amount">{{ bal | peso }}</td>
+          <td class="amount">{{ mn | peso }}</td>
+          <td class="amount pay-col">{{ alloc | peso }}</td>
+          <td>{% if extra > 0.5 %}<span style="color:#16a34a">+{{ extra | peso }} extra</span>{% elif loop.first %}<span class="muted">min only</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- STATUS TABLE -->
+  <div class="section">
+    <h2>Card Status — {{ month }}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Card / Loan</th>
+          <th>Balance</th>
+          <th>Min Due</th>
+          <th>Interest/mo</th>
+          <th>Due Date</th>
+          <th>Paid</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for n, e in entries.items() %}
+        {% set bal = e.get('balance', 0) or 0 %}
+        {% set mn = e.get('min_due', 0) or 0 %}
+        {% set pmt = e.get('payment', 0) or 0 %}
+        <tr>
+          <td>{{ n }}</td>
+          {% if bal == 0 and not mn %}
+            <td colspan="6" style="color:#16a34a;font-weight:600">DONE ✓</td>
+          {% else %}
+            <td class="amount">{{ bal | peso }}</td>
+            <td class="amount">{{ mn | peso }}</td>
+            <td class="amount red">{% if e.get('apr') %}{{ (bal * e.apr / 100) | peso }}{% else %}—{% endif %}</td>
+            <td>{{ e.get('due_date', '—') or '—' }}</td>
+            <td class="amount {% if pmt >= mn %}green{% elif pmt > 0 %}yellow{% endif %}">
+              {% if pmt > 0 %}{{ pmt | peso }}{% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td>
+              {% set paid_on = e.get('paid_on', '') %}
+              {% if paid_on and paid_on not in ('Good','Ready') %}✓ {{ paid_on }}
+              {% elif paid_on %}{{ paid_on }}
+              {% else %}<span class="muted">Unpaid</span>{% endif %}
+            </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="report-footer">
+    <span>Generated by Debt Tracker &nbsp;·&nbsp; personal-debt-tracker.fly.dev</span>
+    <span>{{ month }} &nbsp;·&nbsp; Confidential</span>
+  </div>
+
+</div>
+</body>
+</html>

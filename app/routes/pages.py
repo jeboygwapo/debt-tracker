@@ -402,6 +402,71 @@ async def plan_page(
     })
 
 
+@router.get("/report/{month}", response_class=HTMLResponse)
+async def report_page(request: Request, month: str, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return _redirect_login()
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
+
+    data = await _load_user_data(db, user)
+    if month not in data["months"]:
+        return RedirectResponse("/", status_code=302)
+
+    cfg = data.get("income_config", {})
+    ofw_mode = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
+    phone_ends = cfg.get("phone", {}).get("ends", "2099-12")
+    phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
+    base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
+    budget_php = (base_sar - (phone_sar if month <= phone_ends else 0)) * rate
+
+    entries = data["months"][month]
+    fixed_pmts = data.get("fixed_payments", {})
+    pay_alloc, cc_priority = allocate_budget(entries, data, budget_php)
+
+    months_sorted = sorted(data["months"].keys())
+    hist_totals = [
+        round(sum((e.get("balance", 0) or 0) for e in data["months"][m].values()), 2)
+        for m in months_sorted
+    ]
+    total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
+    peak_debt = max(hist_totals) if hist_totals else 0
+    paid_off = max(0, peak_debt - total_now)
+    pct_paid = round(paid_off / peak_debt * 100, 1) if peak_debt > 0 else 0
+
+    plan_rows, payoffs = compute_plan(data)
+    debt_free = plan_rows[-1]["month"] if plan_rows else "—"
+    monthly_interest = sum(
+        (e.get("balance", 0) or 0) * data["debts"].get(n, {}).get("apr_monthly_pct", 0) / 100
+        for n, e in entries.items()
+        if data["debts"].get(n, {}).get("type") == "credit_card"
+    )
+
+    return templates.TemplateResponse(request, "report.html", {
+        "month": month,
+        "username": user.username,
+        "entries": entries,
+        "fixed_pmts": fixed_pmts,
+        "pay_alloc": pay_alloc,
+        "cc_priority": cc_priority,
+        "total_now": total_now,
+        "peak_debt": peak_debt,
+        "paid_off": paid_off,
+        "pct_paid": pct_paid,
+        "budget_php": budget_php,
+        "monthly_interest": monthly_interest,
+        "debt_free": debt_free,
+        "ofw_mode": ofw_mode,
+        "rate": rate,
+    })
+
+
 @router.get("/settings", response_class=HTMLResponse)
 async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
     try:
