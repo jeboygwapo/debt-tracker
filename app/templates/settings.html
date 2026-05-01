@@ -5,13 +5,13 @@
 {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
 
 <div class="section">
-  <h3>SAR → PHP Rate</h3>
+  <h3>{{ income_currency(request) }} → {{ currency_symbol(request) }} Rate</h3>
   <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Check Wise or Western Union for current rate before updating.</p>
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="rate">
     <div>
-      <label>Current: 1 SAR = {{ currency_symbol(request) }}{{ cfg.get('sar_to_php', 15.0) }}</label>
+      <label>Current: 1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ cfg.get('sar_to_php', 15.0) }}</label>
       <input name="rate" placeholder="{{ cfg.get('sar_to_php', 15.0) }}" style="max-width:160px">
     </div>
     <button type="submit" class="btn btn-primary">Update Rate</button>
@@ -19,14 +19,32 @@
 </div>
 
 <div class="section">
-  <h3>Debt Currency</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Symbol shown on all balances, budgets, and charts.</p>
-  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+  <h3>Currency Settings</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Income currency (what you earn) and debt currency (what you owe).</p>
+  <form method="POST" style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="currency">
     <div>
-      <label>Currency Symbol</label>
-      <select name="currency_symbol" style="max-width:220px">
+      <label>Income Currency</label>
+      <select name="income_currency" style="max-width:240px">
+        {% set inc = income_cur %}
+        <option value="SAR" {% if inc == 'SAR' %}selected{% endif %}>SAR — Saudi Riyal</option>
+        <option value="AED" {% if inc == 'AED' %}selected{% endif %}>AED — UAE Dirham</option>
+        <option value="USD" {% if inc == 'USD' %}selected{% endif %}>USD — US Dollar</option>
+        <option value="SGD" {% if inc == 'SGD' %}selected{% endif %}>SGD — Singapore Dollar</option>
+        <option value="HKD" {% if inc == 'HKD' %}selected{% endif %}>HKD — Hong Kong Dollar</option>
+        <option value="QAR" {% if inc == 'QAR' %}selected{% endif %}>QAR — Qatari Riyal</option>
+        <option value="KWD" {% if inc == 'KWD' %}selected{% endif %}>KWD — Kuwaiti Dinar</option>
+        <option value="BHD" {% if inc == 'BHD' %}selected{% endif %}>BHD — Bahraini Dinar</option>
+        <option value="GBP" {% if inc == 'GBP' %}selected{% endif %}>GBP — British Pound</option>
+        <option value="EUR" {% if inc == 'EUR' %}selected{% endif %}>EUR — Euro</option>
+        <option value="JPY" {% if inc == 'JPY' %}selected{% endif %}>JPY — Japanese Yen</option>
+        <option value="MYR" {% if inc == 'MYR' %}selected{% endif %}>MYR — Malaysian Ringgit</option>
+      </select>
+    </div>
+    <div>
+      <label>Debt Currency Symbol</label>
+      <select name="currency_symbol" style="max-width:240px">
         {% set cur = currency_sym %}
         <option value="₱" {% if cur == '₱' %}selected{% endif %}>₱ Philippine Peso (PHP)</option>
         <option value="$" {% if cur == '$' %}selected{% endif %}>$ US Dollar (USD)</option>
@@ -42,7 +60,7 @@
         <option value="BD" {% if cur == 'BD' %}selected{% endif %}>BD Bahraini Dinar (BHD)</option>
       </select>
     </div>
-    <button type="submit" class="btn btn-primary">Update Currency</button>
+    <button type="submit" class="btn btn-primary">Update Currencies</button>
   </form>
 </div>
 
@@ -85,22 +103,22 @@
 
 <div class="section">
   <h3>Income Config</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">SAR amounts. Budget = (Salary − Expenses − Phone) × Rate.</p>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">{{ income_currency(request) }} amounts. Budget = (Salary − Expenses − Phone) × Rate.</p>
   <form method="POST" style="max-width:420px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="income">
     <div style="margin-bottom:12px">
-      <label>Monthly Salary (SAR)</label>
+      <label>Monthly Salary ({{ income_currency(request) }})</label>
       <input name="monthly_sar" type="number" step="0.01" value="{{ cfg.get('monthly_sar', 0) }}">
     </div>
     <div style="margin-bottom:12px">
-      <label>Saudi Expenses (SAR)</label>
+      <label>Expenses ({{ income_currency(request) }})</label>
       <input name="expenses_sar" type="number" step="0.01" value="{{ cfg.get('expenses_sar', 0) }}">
     </div>
     <p style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">Phone Installment (optional)</p>
     <div class="row">
       <div>
-        <label>Monthly Amount (SAR)</label>
+        <label>Monthly Amount ({{ income_currency(request) }})</label>
         <input name="phone_sar" type="number" step="0.01" value="{{ cfg.get('phone', {}).get('monthly_sar', '') }}">
       </div>
       <div>
@@ -110,7 +128,7 @@
     </div>
     <div style="margin-top:4px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:.85rem;color:var(--muted);margin-bottom:14px">
       Net remittable: <strong style="color:var(--text)">
-        {{ (cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) }} SAR
+        {{ (cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) }} {{ income_currency(request) }}
       </strong>
       &nbsp;→&nbsp;
       <strong style="color:#22c55e">

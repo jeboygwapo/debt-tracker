@@ -413,6 +413,7 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
         "active": "settings",
         "cfg": cfg,
         "currency_sym": cfg.get("currency_symbol", "₱"),
+        "income_cur": cfg.get("income_currency", "SAR"),
         "msg": None,
         "is_admin": user.is_admin,
     })
@@ -435,7 +436,9 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
             cfg = dict(user.income_config or {})
             cfg["sar_to_php"] = new_rate
             await update_income_config(db, user, cfg)
-            msg = f"Rate updated → 1 SAR = ₱{new_rate}"
+            inc = (user.income_config or {}).get("income_currency", "SAR")
+            sym = (user.income_config or {}).get("currency_symbol", "₱")
+            msg = f"Rate updated → 1 {inc} = {sym}{new_rate}"
         except ValueError:
             msg = "Invalid rate."
 
@@ -463,14 +466,17 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
 
     elif action == "currency":
         symbol = str(form.get("currency_symbol", "")).strip()
-        if symbol:
+        inc_cur = str(form.get("income_currency", "")).strip()
+        if symbol and inc_cur:
             cfg = dict(user.income_config or {})
             cfg["currency_symbol"] = symbol
+            cfg["income_currency"] = inc_cur
             await update_income_config(db, user, cfg)
             request.session["currency_symbol"] = symbol
-            msg = f"Currency set to {symbol}"
+            request.session["income_currency"] = inc_cur
+            msg = f"Currency updated: income {inc_cur}, debt {symbol}"
         else:
-            msg = "Invalid currency symbol."
+            msg = "Invalid currency selection."
 
     elif action == "password":
         current = str(form.get("current_password", ""))
@@ -491,6 +497,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
         "active": "settings",
         "cfg": cfg,
         "currency_sym": cfg.get("currency_symbol", "₱"),
+        "income_cur": cfg.get("income_currency", "SAR"),
         "msg": msg,
         "is_admin": user.is_admin,
     })

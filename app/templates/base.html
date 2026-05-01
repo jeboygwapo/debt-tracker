@@ -148,6 +148,7 @@ input:disabled{color:var(--muted)}
 </div>
 <script>
 window.CURRENCY_SYMBOL = "{{ currency_symbol(request) }}";
+window.INCOME_CURRENCY = "{{ income_currency(request) }}";
 function toggleNav() {
   document.getElementById('nav-links').classList.toggle('open');
 }

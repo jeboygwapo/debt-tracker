@@ -8,12 +8,12 @@
   <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div>
-      <label>SAR Amount</label>
+      <label>{{ income_currency(request) }} Amount</label>
       <input name="sar" placeholder="5650" style="max-width:160px" value="{{ sar_input }}">
     </div>
     <div>
       <label>Current Rate</label>
-      <input value="1 SAR = {{ currency_symbol(request) }}{{ rate }}" disabled style="max-width:160px">
+      <input value="1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ rate }}" disabled style="max-width:160px">
     </div>
     <button type="submit" class="btn btn-primary">Calculate →</button>
     <a href="/settings" style="color:#3b82f6;font-size:.85rem;align-self:center">Change rate</a>
@@ -26,7 +26,7 @@
   <div style="display:flex;gap:24px;margin-bottom:16px;flex-wrap:wrap">
     <div>
       <span style="color:var(--muted);font-size:.8rem">Sending</span>
-      <div style="font-size:1.3rem;font-weight:700">{{ "{:,.0f}".format(result.sar) }} SAR</div>
+      <div style="font-size:1.3rem;font-weight:700">{{ "{:,.0f}".format(result.sar) }} {{ income_currency(request) }}</div>
     </div>
     <div>
       <span style="color:var(--muted);font-size:.8rem">PHP Received</span>
