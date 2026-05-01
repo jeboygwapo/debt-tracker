@@ -31,6 +31,28 @@ router = APIRouter()
 _PALETTE = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e"]
 
 
+def _parse_entries_from_form(form, debts: list) -> list[dict]:
+    entries = []
+    for i, debt in enumerate(debts):
+        prefix = f"d_{i}_"
+        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
+        if not bal_s:
+            continue
+        try:
+            entries.append({
+                "debt_id": debt.id,
+                "balance": float(bal_s),
+                "min_due": float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
+                "payment": float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
+                "due_date": str(form.get(f"{prefix}due_date", "")).strip() or None,
+                "paid_on": str(form.get(f"{prefix}paid_on", "")).strip() or None,
+                "note": str(form.get(f"{prefix}note", "")).strip() or None,
+            })
+        except ValueError:
+            continue
+    return entries
+
+
 
 def _redirect_login():
     return RedirectResponse("/login", status_code=302)
@@ -230,26 +252,8 @@ async def add_month_post(request: Request, db: AsyncSession = Depends(get_db), _
             "prev": {}, "summary": None, "today": date.today().isoformat(),
         })
 
-    for i, debt in enumerate(debts):
-        prefix = f"d_{i}_"
-        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
-        if not bal_s:
-            continue
-        try:
-            await upsert_entry(
-                db,
-                user_id=user.id,
-                debt_id=debt.id,
-                month=month,
-                balance=float(bal_s),
-                min_due=float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
-                payment=float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
-                due_date=str(form.get(f"{prefix}due_date", "")).strip() or None,
-                paid_on=str(form.get(f"{prefix}paid_on", "")).strip() or None,
-                note=str(form.get(f"{prefix}note", "")).strip() or None,
-            )
-        except ValueError:
-            continue
+    for entry in _parse_entries_from_form(form, debts):
+        await upsert_entry(db, user_id=user.id, month=month, **entry)
 
     return RedirectResponse(f"/add?saved={month}", status_code=303)
 
@@ -308,28 +312,13 @@ async def edit_month_post(
     debts = await get_debts(db, user.id)
     form = await request.form()
 
-    await delete_entries_for_month(db, user.id, month)
-
-    for i, debt in enumerate(debts):
-        prefix = f"d_{i}_"
-        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
-        if not bal_s:
-            continue
-        try:
-            await upsert_entry(
-                db,
-                user_id=user.id,
-                debt_id=debt.id,
-                month=month,
-                balance=float(bal_s),
-                min_due=float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
-                payment=float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
-                due_date=str(form.get(f"{prefix}due_date", "")).strip() or None,
-                paid_on=str(form.get(f"{prefix}paid_on", "")).strip() or None,
-                note=str(form.get(f"{prefix}note", "")).strip() or None,
-            )
-        except ValueError:
-            continue
+    try:
+        await delete_entries_for_month(db, user.id, month)
+        for entry in _parse_entries_from_form(form, debts):
+            await upsert_entry(db, user_id=user.id, month=month, **entry)
+    except Exception:
+        await db.rollback()
+        return RedirectResponse(f"/edit/{month}?msg=Save+failed%2C+please+retry", status_code=303)
 
     return RedirectResponse(f"/edit/{month}?msg=Saved", status_code=303)
 
