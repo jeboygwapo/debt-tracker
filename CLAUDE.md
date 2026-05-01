@@ -57,7 +57,10 @@ scripts/             # one-off admin/migration scripts
   "monthly_sar": 8000,
   "expenses_sar": 2000,
   "sar_to_php": 15.2,
-  "phone": { "monthly_sar": 200, "ends": "2026-07" }
+  "phone": { "monthly_sar": 200, "ends": "2026-07" },
+  "ofw_mode": true,
+  "currency_symbol": "₱",
+  "income_currency": "SAR"
 }
 ```
 
@@ -112,6 +115,7 @@ python -m pytest tests/ -v
 - Session secret in `.env` (`SECRET_KEY`) — never log or expose
 
 ## Settings Actions (POST /settings, action= field)
+- `mode` — toggle `ofw_mode` bool in income_config + session
 - `rate` — update `sar_to_php` in income_config
 - `income` — update `monthly_sar`, `expenses_sar`, `phone.monthly_sar`, `phone.ends`
 - `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
@@ -161,6 +165,7 @@ python scripts/init_db.py
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
 - Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python3 -m pytest tests/ -v`
 - Currency: user-selectable debt currency symbol stored in `income_config["currency_symbol"]` + session; set via Settings → Debt Currency; Jinja2 `currency_symbol(request)` global + `| peso` filter both read from session; defaults to ₱
+- OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
 - AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
 - asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
@@ -183,7 +188,4 @@ python scripts/init_db.py
 - `currency` — save `currency_symbol` to income_config + update `request.session["currency_symbol"]`
 
 ## Pending Work (next session)
-1. **Portfolio card** — update URL → https://personal-debt-tracker.fly.dev, status → "Live"
-2. **Code quality** — DB transaction rollbacks, duplicate form parse logic
-3. **Tests** — rate limit, edge case coverage
-4. **fly.env.example** — document DATABASE_URL, DATA_DIR, APP_ENV, AI_DAILY_LIMIT
+1. **Forgot password** — lowest priority, contact admin covers it for now
