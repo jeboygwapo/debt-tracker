@@ -25,6 +25,28 @@
   {% endif %}
 </div>
 
+{% if peak_debt > 0 %}
+<div class="section" style="padding:20px 24px">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+    <div>
+      <span style="font-weight:700;font-size:1rem">Payoff Progress</span>
+      <span style="color:var(--muted);font-size:.82rem;margin-left:8px">from peak {{ peak_debt | peso }}</span>
+    </div>
+    <div style="text-align:right">
+      <span style="font-size:1.4rem;font-weight:800;color:#22c55e">{{ pct_paid }}%</span>
+      <span style="color:var(--muted);font-size:.82rem;margin-left:6px">paid off &nbsp;·&nbsp; {{ paid_off | peso }} reduced</span>
+    </div>
+  </div>
+  <div style="background:var(--border);border-radius:99px;height:12px;overflow:hidden">
+    <div style="height:100%;width:{{ [pct_paid, 100] | min }}%;background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:99px;transition:width .6s ease"></div>
+  </div>
+  {% if pct_paid >= 75 %}<p style="color:#22c55e;font-size:.8rem;margin-top:8px;font-weight:600">🎉 Almost there — keep going!</p>
+  {% elif pct_paid >= 50 %}<p style="color:#22c55e;font-size:.8rem;margin-top:8px;font-weight:600">💪 Halfway done — great progress!</p>
+  {% elif pct_paid >= 25 %}<p style="color:#f59e0b;font-size:.8rem;margin-top:8px;font-weight:600">📈 Good momentum — stay consistent!</p>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if not hist_labels %}
 <div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
   <div style="font-size:2.5rem;margin-bottom:12px">💳</div>

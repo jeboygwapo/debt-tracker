@@ -116,6 +116,10 @@ async def dashboard(
     proj_totals = [round(r["total"], 2) for r in plan_rows]
     debt_free = plan_rows[-1]["month"] if plan_rows else "—"
 
+    peak_debt = max(hist_totals) if hist_totals else 0
+    paid_off = max(0, peak_debt - total_now)
+    pct_paid = round((paid_off / peak_debt * 100), 1) if peak_debt > 0 else 0
+
     donut_labels, donut_values, donut_colors = [], [], []
     for i, (name, e) in enumerate(entries.items()):
         bal = e.get("balance", 0) or 0
@@ -173,6 +177,9 @@ async def dashboard(
         "username": user.username,
         "ofw_mode": ofw_mode,
         "rate": rate,
+        "peak_debt": peak_debt,
+        "paid_off": paid_off,
+        "pct_paid": pct_paid,
     })
 
 
