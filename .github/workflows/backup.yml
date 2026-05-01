@@ -1,0 +1,38 @@
+name: Monthly DB Backup
+
+on:
+  schedule:
+    - cron: "0 2 1 * *"   # 2:00 AM UTC on the 1st of every month
+  workflow_dispatch:        # allow manual run any time
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Export DB to CSV
+        run: python scripts/export_to_csv.py --out-dir ./backup-out
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup-out/
+          retention-days: 90
