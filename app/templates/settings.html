@@ -120,7 +120,7 @@
 
 <div class="section">
   <h3>Income Config</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">{{ income_currency(request) }} amounts. Budget = (Salary − Expenses − Phone) × Rate.</p>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Amounts in {{ income_currency(request) }}. Budget = (Salary − Expenses − Phone){% if ofw_mode %} × Exchange Rate{% endif %}.</p>
   <form method="POST" style="max-width:420px">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <input type="hidden" name="action" value="income">
@@ -144,13 +144,14 @@
       </div>
     </div>
     <div style="margin-top:4px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:.85rem;color:var(--muted);margin-bottom:14px">
-      Net remittable: <strong style="color:var(--text)">
-        {{ (cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) }} {{ income_currency(request) }}
-      </strong>
+      {% set net = cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0) %}
+      Net available: <strong style="color:var(--text)">{{ income_currency(request) }} {{ '{:,.0f}'.format(net) }}</strong>
+      {% if ofw_mode %}
       &nbsp;→&nbsp;
       <strong style="color:#22c55e">
-        {{ currency_symbol(request) }}{{ '{:,.0f}'.format((cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0)) * cfg.get('sar_to_php', 15)) }}
+        {{ currency_symbol(request) }}{{ '{:,.0f}'.format(net * cfg.get('sar_to_php', 15)) }}
       </strong>
+      {% endif %}
     </div>
     <button type="submit" class="btn btn-primary">Update Income Config</button>
   </form>

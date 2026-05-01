@@ -18,13 +18,24 @@
   <div class="card"><div class="label">Total Debt</div><div class="value red">{{ total_now | peso }}</div></div>
   <div class="card"><div class="label">Credit Cards</div><div class="value yellow">{{ total_cc | peso }}</div></div>
   <div class="card"><div class="label">Interest / Month</div><div class="value red">{{ monthly_interest | peso }}</div></div>
-  <div class="card"><div class="label">Debt-Free Target</div><div class="value green">{{ debt_free }}</div></div>
+  <div class="card"><div class="label">Debt-Free Target</div><div class="value {% if debt_free == '—' %}{% else %}green{% endif %}">{{ debt_free }}{% if debt_free == '—' %}<span style="font-size:.7rem;color:var(--muted);display:block;font-weight:400;margin-top:2px">add data to project</span>{% endif %}</div></div>
   <div class="card"><div class="label">Monthly Budget</div><div class="value blue">{{ budget_php | peso }}</div></div>
   {% if ofw_mode %}
   <div class="card"><div class="label">{{ income_currency(request) }}→{{ currency_symbol(request) }} Rate</div><div class="value">1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ rate }}</div></div>
   {% endif %}
 </div>
 
+{% if not hist_labels %}
+<div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
+  <div style="font-size:2.5rem;margin-bottom:12px">💳</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:8px">No data yet</p>
+  <p style="font-size:.875rem;margin-bottom:20px">Add your debts and record this month's balances to get started.</p>
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <a href="/debts" class="btn btn-primary">Set Up My Debts</a>
+    <a href="/add" class="btn btn-back">Add This Month's Data</a>
+  </div>
+</div>
+{% else %}
 <div class="charts">
   <div class="chart-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -52,6 +63,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="section" style="border:2px solid #854d0e">
   <h3 style="color:#fde68a">💰 {% if is_latest %}Pay This Month{% else %}Payment Plan — {{ viewing }}{% endif %} — Budget {{ budget_php | peso }}</h3>

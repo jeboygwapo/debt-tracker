@@ -4,12 +4,12 @@
   <div class="row">
     <div>
       <label>Balance (Statement Amount)</label>
-      <input name="d_{{ i }}_balance" id="bal_{{ i }}"
+      <input name="d_{{ i }}_balance" id="bal_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('balance', '') if e.get('balance') else '' }}" placeholder="0.00">
     </div>
     <div>
       <label>Minimum Due</label>
-      <input name="d_{{ i }}_min_due" id="mn_{{ i }}"
+      <input name="d_{{ i }}_min_due" id="mn_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('min_due', '') if e.get('min_due') else '' }}" placeholder="0.00">
     </div>
   </div>
@@ -45,7 +45,7 @@
         <button type="button" class="qbtn" onclick="copyMin({{ i }})">= Min</button>
         <button type="button" class="qbtn" onclick="setField('d_{{ i }}_payment','0')">= 0</button>
       </label>
-      <input name="d_{{ i }}_payment" id="pmt_{{ i }}"
+      <input name="d_{{ i }}_payment" id="pmt_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('payment', '') }}" placeholder="0.00">
     </div>
     <div>

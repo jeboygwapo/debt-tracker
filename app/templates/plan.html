@@ -8,6 +8,14 @@
   <a href="/plan?strategy=snowball"  class="btn {{ 'btn-primary' if strategy == 'snowball'  else 'btn-back' }}">Snowball</a>
 </div>
 
+{% if not payoffs %}
+<div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
+  <div style="font-size:2.5rem;margin-bottom:12px">📊</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:8px">No data yet</p>
+  <p style="font-size:.875rem;margin-bottom:20px">Add at least one month of balances to generate a payoff projection.</p>
+  <a href="/add" class="btn btn-primary">+ Add This Month's Data</a>
+</div>
+{% else %}
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
   {% for name, when in payoffs.items() %}
   <div class="card">
@@ -35,4 +43,5 @@
     </tbody>
   </table>
 </div>
+{% endif %}
 {% endblock %}

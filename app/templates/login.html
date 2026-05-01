@@ -33,6 +33,11 @@ button:hover{background:#4f46e5}
     <input name="password" type="password" autocomplete="current-password">
     <button type="submit">Sign In</button>
   </form>
+  {% if allow_registration %}
+  <a href="/register" style="display:block;margin-top:1rem;width:100%;padding:.75rem;background:transparent;color:#6366f1;border:1px solid #6366f1;border-radius:8px;font-size:1rem;font-weight:600;text-align:center;text-decoration:none">
+    Create Account
+  </a>
+  {% else %}
   <div style="margin-top:1rem;position:relative">
     <button type="button" disabled
       style="width:100%;padding:.75rem;background:#1e293b;color:#475569;border:1px dashed #334155;border-radius:8px;font-size:1rem;font-weight:600;cursor:not-allowed">
@@ -42,10 +47,6 @@ button:hover{background:#4f46e5}
       Coming Soon
     </span>
   </div>
-  {% if allow_registration %}
-  <p style="text-align:center;margin-top:1.2rem;font-size:.85rem;color:var(--muted)">
-    No account? <a href="/register" style="color:#6366f1;text-decoration:none">Register</a>
-  </p>
   {% endif %}
 </div>
 <script>
