@@ -32,8 +32,14 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Wait for proxy
-        run: sleep 5
+      - name: Wait for proxy to be ready
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 5432 && echo "Proxy ready after ${i}s" && break
+            echo "Waiting... (${i}s)"
+            sleep 1
+          done
+          nc -z localhost 5432 || (echo "Proxy never became ready" && exit 1)
 
       - name: Export DB to CSV
         run: python scripts/export_to_csv.py --out-dir ./backup-out
