@@ -188,6 +188,8 @@ async def add_month_get(
     request: Request,
     msg: Optional[str] = None,
     saved: Optional[str] = None,
+    updated: Optional[str] = None,
+    month: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -199,6 +201,10 @@ async def add_month_get(
     latest = latest_month(data)
     prev = data["months"].get(latest, {})
     debt_names = list(data["debts"].keys())
+
+    if updated and month:
+        saved = month
+        msg = f"⚠ {month} already existed — data updated."
 
     summary = None
     if saved and saved in data["months"]:
@@ -262,10 +268,14 @@ async def add_month_post(request: Request, db: AsyncSession = Depends(get_db), _
             "prev": {}, "summary": None, "today": date.today().isoformat(),
         })
 
+    existing_months = await get_months(db, user.id)
+    is_update = month in existing_months
+
     for entry in _parse_entries_from_form(form, debts):
         await upsert_entry(db, user_id=user.id, month=month, **entry)
 
-    return RedirectResponse(f"/add?saved={month}", status_code=303)
+    flag = "updated=1" if is_update else f"saved={month}"
+    return RedirectResponse(f"/add?{flag}&month={month}", status_code=303)
 
 
 @router.get("/edit/{month}", response_class=HTMLResponse)
@@ -447,6 +457,10 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
         for n, e in entries.items()
         if data["debts"].get(n, {}).get("type") == "credit_card"
     )
+    entry_interest = {
+        n: round((e.get("balance", 0) or 0) * data["debts"].get(n, {}).get("apr_monthly_pct", 0) / 100, 2)
+        for n, e in entries.items()
+    }
 
     return templates.TemplateResponse(request, "report.html", {
         "month": month,
@@ -455,6 +469,7 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
         "fixed_pmts": fixed_pmts,
         "pay_alloc": pay_alloc,
         "cc_priority": cc_priority,
+        "entry_interest": entry_interest,
         "total_now": total_now,
         "peak_debt": peak_debt,
         "paid_off": paid_off,

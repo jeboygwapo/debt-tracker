@@ -194,7 +194,7 @@ tr:last-child td{border-bottom:none}
           {% else %}
             <td class="amount">{{ bal | peso }}</td>
             <td class="amount">{{ mn | peso }}</td>
-            <td class="amount red">{% if e.get('apr') %}{{ (bal * e.apr / 100) | peso }}{% else %}—{% endif %}</td>
+            <td class="amount red">{% set i = entry_interest.get(n, 0) %}{% if i > 0 %}{{ i | peso }}{% else %}—{% endif %}</td>
             <td>{{ e.get('due_date', '—') or '—' }}</td>
             <td class="amount {% if pmt >= mn %}green{% elif pmt > 0 %}yellow{% endif %}">
               {% if pmt > 0 %}{{ pmt | peso }}{% else %}<span class="muted">—</span>{% endif %}

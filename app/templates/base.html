@@ -160,6 +160,8 @@ function toggleTheme() {
   html.dataset.theme = isDark ? 'light' : 'dark';
   document.getElementById('theme-btn').textContent = isDark ? '☀️' : '🌙';
   localStorage.setItem('theme', html.dataset.theme);
+  if (typeof buildTrend === 'function') buildTrend(localStorage.getItem('trendType') || 'line');
+  if (typeof buildDonut === 'function') buildDonut(localStorage.getItem('donutType') || 'doughnut');
 }
 (function() {
   const saved = localStorage.getItem('theme') || 'dark';
