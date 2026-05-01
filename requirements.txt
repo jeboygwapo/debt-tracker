@@ -6,6 +6,7 @@ markupsafe>=2.1.0
 python-multipart>=0.0.9
 openai>=1.0.0
 itsdangerous>=2.1.0
+sentry-sdk[fastapi]>=2.0.0
 
 # testing
 pytest>=9.0.0
