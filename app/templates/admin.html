@@ -74,6 +74,65 @@
   </div>
 </div>
 
+<!-- Send Notification -->
+<div class="section">
+  <h3>Send Notification</h3>
+  <form method="POST" action="/admin/notifications/create" style="max-width:480px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <div style="margin-bottom:12px">
+      <label>Title</label>
+      <input name="title" placeholder="e.g. New feature added" maxlength="128" autocomplete="off">
+    </div>
+    <div style="margin-bottom:16px">
+      <label>Message</label>
+      <textarea name="body" rows="3" style="width:100%;padding:9px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem;resize:vertical" placeholder="Describe the update..."></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Send to All Users</button>
+  </form>
+</div>
+
+<!-- Notification History -->
+{% if notifications %}
+<div class="section" style="padding:0;overflow:hidden;margin-bottom:20px">
+  <div style="padding:16px 20px 0">
+    <h3>Notification History</h3>
+  </div>
+  <table class="table-card">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Sent</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for n in notifications %}
+    <tr>
+      <td data-label="Title"><strong>{{ n.title }}</strong><br><span style="color:var(--muted);font-size:.78rem">{{ n.body[:80] }}{% if n.body|length > 80 %}…{% endif %}</span></td>
+      <td data-label="Sent" style="color:var(--muted);font-size:.82rem">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td data-label="Status">
+        {% if n.is_active %}
+          <span class="badge badge-green">Active</span>
+        {% else %}
+          <span class="badge" style="background:var(--border);color:var(--muted)">Hidden</span>
+        {% endif %}
+      </td>
+      <td data-label="">
+        {% if n.is_active %}
+        <form method="POST" action="/admin/notifications/{{ n.id }}/deactivate" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+          <button type="submit" class="qbtn qbtn-red">Hide</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <!-- Create User -->
 <div class="section">
   <h3>Create New User</h3>

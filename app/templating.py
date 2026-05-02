@@ -5,6 +5,7 @@ import jinja2
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
+from .config import APP_VERSION
 from .csrf import get_csrf_token
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -30,3 +31,4 @@ templates.env.globals["csrf_token"] = get_csrf_token
 templates.env.globals["currency_symbol"] = _currency_symbol
 templates.env.globals["income_currency"] = _income_currency
 templates.env.globals["ofw_mode"] = _ofw_mode
+templates.env.globals["app_version"] = APP_VERSION

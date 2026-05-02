@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jayvee — Debt Tracker</title>
 <script>document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark';</script>
+<script>
+window.CURRENCY_SYMBOL = "{{ currency_symbol(request) }}";
+window.INCOME_CURRENCY = "{{ income_currency(request) }}";
+</script>
 <script src="/static/chart.min.js"></script>
 <style>
 :root {
@@ -47,6 +51,15 @@ nav .brand{font-weight:700;color:var(--text);font-size:1rem;white-space:nowrap}
 .nav-links{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .theme-btn{background:none;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.85rem;transition:.15s;margin-left:4px}
 .theme-btn:hover{background:var(--border)}
+.avatar-btn{background:none;border:1px solid var(--border);color:var(--text);border-radius:999px;width:32px;height:32px;cursor:pointer;font-size:.85rem;font-weight:700;transition:.15s;display:flex;align-items:center;justify-content:center;position:relative;margin-left:4px}
+.avatar-btn:hover{background:var(--border)}
+.avatar-notif{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:999px;font-size:.5rem;font-weight:700;padding:1px 4px;min-width:14px;text-align:center;line-height:1.5;display:none}
+.avatar-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:200;display:none;flex-direction:column;gap:2px}
+.avatar-menu.open{display:flex}
+.avatar-menu a,.avatar-menu button{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;font-size:.85rem;color:var(--text2);text-decoration:none;background:none;border:none;cursor:pointer;width:100%;text-align:left;transition:.15s}
+.avatar-menu a:hover,.avatar-menu button:hover{background:var(--border);color:var(--text)}
+.avatar-menu .menu-divider{height:1px;background:var(--border);margin:4px 0}
+.avatar-wrapper{position:relative}
 
 .page{padding:24px 20px;max-width:1100px;margin:0 auto}
 h2{font-size:1.3rem;font-weight:700;margin-bottom:20px}
@@ -118,6 +131,7 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
   .nav-links.open{display:flex}
   .nav-links a,.nav-links .theme-btn{width:100%;text-align:left}
   .nav-spacer{display:none}
+  .avatar-menu{right:auto;left:0}
   .charts{grid-template-columns:1fr}
   .grid{grid-template-columns:repeat(2,1fr)}
   .page{padding:16px 14px}
@@ -138,22 +152,63 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
     <a href="/debts" class="{{ 'active' if active=='debts' else '' }}">My Cards</a>
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
-    <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">Settings</a>
-    <span class="nav-spacer"></span>
-    {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">Admin</a>{% endif %}
-    <a href="/logout" style="color:#f87171">Logout</a>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    {% if request.session.get('user_id') %}
+    <div class="avatar-wrapper">
+      <button class="avatar-btn" id="avatar-btn" onclick="toggleAvatarMenu()" title="Menu">
+        {{ request.session.get('username', 'U')[0].upper() }}
+        <span class="avatar-notif" id="notif-badge">0</span>
+      </button>
+      <div class="avatar-menu" id="avatar-menu">
+        <a href="/notifications" class="{{ 'active' if active=='notifications' else '' }}">🔔 Notifications <span id="notif-count" style="margin-left:auto;background:#ef4444;color:#fff;border-radius:999px;font-size:.6rem;font-weight:700;padding:1px 6px;display:none">0</span></a>
+        <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">⚙️ Settings</a>
+        {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">👑 Admin</a>{% endif %}
+        <div class="menu-divider"></div>
+        <button onclick="toggleTheme()" id="theme-btn">🌙 Toggle Theme</button>
+        <a href="/logout" style="color:#f87171">🚪 Logout</a>
+      </div>
+    </div>
+    {% else %}
+    <a href="/login">Login</a>
+    {% endif %}
   </div>
 </nav>
 <div class="page">
 {% block content %}{% endblock %}
 </div>
+<footer style="text-align:center;padding:16px;color:var(--faint);font-size:.7rem">v{{ app_version }}</footer>
 <script>
-window.CURRENCY_SYMBOL = "{{ currency_symbol(request) }}";
-window.INCOME_CURRENCY = "{{ income_currency(request) }}";
 function toggleNav() {
   document.getElementById('nav-links').classList.toggle('open');
 }
+function toggleAvatarMenu() {
+  document.getElementById('avatar-menu').classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  const wrapper = document.getElementById('avatar-btn');
+  const menu = document.getElementById('avatar-menu');
+  if (menu && wrapper && !wrapper.contains(e.target) && !menu.contains(e.target)) {
+    menu.classList.remove('open');
+  }
+});
+(function pollNotifications() {
+  const badge = document.getElementById('notif-badge');
+  const count = document.getElementById('notif-count');
+  if (!badge) return;
+  function check() {
+    fetch('/api/notifications/unread').then(r => r.json()).then(d => {
+      if (d.count > 0) {
+        badge.textContent = d.count;
+        badge.style.display = 'inline';
+        if (count) { count.textContent = d.count; count.style.display = 'inline'; }
+      } else {
+        badge.style.display = 'none';
+        if (count) count.style.display = 'none';
+      }
+    }).catch(() => {});
+  }
+  check();
+  setInterval(check, 60000);
+})();
 function toggleTheme() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';

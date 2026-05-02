@@ -8,9 +8,35 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
-from .routes import admin as admin_routes, auth, pages, api as api_routes, debts as debts_routes
+from .routes import admin as admin_routes, auth, notifications as notifications_routes, pages, api as api_routes, debts as debts_routes
 
 _MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none';"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, is_prod: bool = False):
+        super().__init__(app)
+        self._is_prod = is_prod
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = _CSP
+        if self._is_prod:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
@@ -51,6 +77,7 @@ def create_app() -> FastAPI:
         https_only=is_prod,
         same_site="lax",
     )
+    app.add_middleware(SecurityHeadersMiddleware, is_prod=is_prod)
     app.add_middleware(RequestSizeLimitMiddleware)
 
     static_dir = Path(__file__).parent.parent / "static"
@@ -61,5 +88,6 @@ def create_app() -> FastAPI:
     app.include_router(api_routes.router)
     app.include_router(debts_routes.router)
     app.include_router(admin_routes.router)
+    app.include_router(notifications_routes.router)
 
     return app

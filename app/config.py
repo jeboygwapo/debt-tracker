@@ -3,6 +3,8 @@ from pathlib import Path
 
 import bcrypt
 
+APP_VERSION = "0.1.0"
+
 
 def load_env_file(env_path: Path) -> None:
     if not env_path.exists():

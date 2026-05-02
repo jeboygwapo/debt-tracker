@@ -5,7 +5,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.base import get_db
-from ..db.crud import create_user, delete_user, get_all_users, get_user_by_id, update_user_password
+from ..db.crud import (
+    create_notification, create_user, deactivate_notification,
+    delete_user, get_all_notifications, get_all_users, get_user_by_id, update_user_password,
+)
 from ..dependencies import NotAuthenticated, get_current_user
 from ..templating import templates
 
@@ -29,9 +32,11 @@ async def admin_index(request: Request, msg: str = None, db: AsyncSession = Depe
         return redirect
 
     users = await get_all_users(db)
+    notifications = await get_all_notifications(db)
     return templates.TemplateResponse(request, "admin.html", {
         "active": "admin",
         "users": users,
+        "notifications": notifications,
         "current_user_id": user.id,
         "msg": msg,
     })
@@ -105,3 +110,30 @@ async def admin_delete_user(request: Request, target_id: int, db: AsyncSession =
     if target:
         await delete_user(db, target_id)
     return RedirectResponse(f"/admin?msg=User+deleted.", status_code=303)
+
+
+@router.post("/notifications/create")
+async def admin_create_notification(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    user, redirect = await _require_admin(request, db)
+    if redirect:
+        return redirect
+
+    form = await request.form()
+    title = str(form.get("title", "")).strip()
+    body = str(form.get("body", "")).strip()
+
+    if not title or not body:
+        return RedirectResponse("/admin?msg=Title+and+body+required.", status_code=303)
+
+    await create_notification(db, title=title, body=body, created_by=user.id)
+    return RedirectResponse("/admin?msg=Notification+sent.", status_code=303)
+
+
+@router.post("/notifications/{notification_id}/deactivate")
+async def admin_deactivate_notification(request: Request, notification_id: int, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    user, redirect = await _require_admin(request, db)
+    if redirect:
+        return redirect
+
+    await deactivate_notification(db, notification_id)
+    return RedirectResponse("/admin?msg=Notification+deactivated.", status_code=303)

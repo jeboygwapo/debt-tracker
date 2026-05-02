@@ -4,11 +4,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db.base import get_db
-from ..db.crud import get_ai_cache, get_ai_daily_count, set_ai_cache
+from ..db.crud import get_ai_cache, get_ai_daily_count, get_unread_count, set_ai_cache
 from ..dependencies import NotAuthenticated, get_current_user
 from ..services.ai import compute_hash, get_analysis
 
 router = APIRouter(prefix="/api")
+
+
+@router.get("/notifications/unread")
+async def notifications_unread(request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return JSONResponse({"count": 0})
+    count = await get_unread_count(db, user.id)
+    return JSONResponse({"count": count})
 
 
 @router.get("/healthz")
@@ -54,5 +64,6 @@ async def analysis(
     if html:
         return JSONResponse({"html": html, "cached": cache_hit})
     return JSONResponse({
-        "error": "No OpenAI key set. <a href='/settings' style='color:#3b82f6'>Add key in Settings →</a>"
+        "error": "No OpenAI key configured.",
+        "error_link": {"href": "/settings", "text": "Go to Settings →"},
     })

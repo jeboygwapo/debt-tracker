@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..config import hash_password
-from .models import AiCache, Debt, MonthlyEntry, User
+from .models import AiCache, Debt, MonthlyEntry, Notification, NotificationRead, User
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -172,6 +172,53 @@ async def delete_entries_for_month(db: AsyncSession, user_id: int, month: str) -
             MonthlyEntry.user_id == user_id, MonthlyEntry.month == month
         )
     )
+    await db.commit()
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+async def create_notification(db: AsyncSession, title: str, body: str, created_by: int) -> Notification:
+    n = Notification(title=title, body=body, created_by=created_by)
+    db.add(n)
+    await db.commit()
+    await db.refresh(n)
+    return n
+
+
+async def get_active_notifications(db: AsyncSession) -> list[Notification]:
+    result = await db.execute(
+        select(Notification).where(Notification.is_active == True).order_by(Notification.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_notifications(db: AsyncSession) -> list[Notification]:
+    result = await db.execute(select(Notification).order_by(Notification.created_at.desc()))
+    return list(result.scalars().all())
+
+
+async def deactivate_notification(db: AsyncSession, notification_id: int) -> None:
+    await db.execute(
+        update(Notification).where(Notification.id == notification_id).values(is_active=False)
+    )
+    await db.commit()
+
+
+async def get_unread_count(db: AsyncSession, user_id: int) -> int:
+    read_sub = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
+    result = await db.execute(
+        select(Notification).where(Notification.is_active == True, Notification.id.not_in(read_sub))
+    )
+    return len(result.scalars().all())
+
+
+async def mark_all_read(db: AsyncSession, user_id: int) -> None:
+    active = await get_active_notifications(db)
+    read_sub = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
+    already_read = {r for r in (await db.execute(read_sub)).scalars().all()}
+    for n in active:
+        if n.id not in already_read:
+            db.add(NotificationRead(user_id=user_id, notification_id=n.id))
     await db.commit()
 
 

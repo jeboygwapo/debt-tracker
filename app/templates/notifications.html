@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>🔔 Notifications</h2>
+
+{% if notifications %}
+  {% for n in notifications %}
+  <div class="section" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px">
+      <strong style="font-size:.95rem">{{ n.title }}</strong>
+      <span style="font-size:.72rem;color:var(--muted);white-space:nowrap">{{ n.created_at.strftime('%b %d, %Y') }}</span>
+    </div>
+    <p style="font-size:.88rem;color:var(--text2);line-height:1.6;white-space:pre-wrap">{{ n.body }}</p>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="section" style="text-align:center;padding:40px 20px">
+    <div style="font-size:2rem;margin-bottom:12px">📭</div>
+    <p style="color:var(--muted);font-size:.9rem">No notifications yet.</p>
+  </div>
+{% endif %}
+
+{% endblock %}

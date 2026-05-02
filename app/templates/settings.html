@@ -81,19 +81,6 @@
   </form>
 </div>
 
-<div class="section">
-  <h3>OpenAI API Key</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Required for AI analysis. Key stored locally in .env file.</p>
-  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <input type="hidden" name="action" value="apikey">
-    <div style="flex:1;min-width:260px">
-      <label>API Key (sk-...)</label>
-      <input name="apikey" type="password" placeholder="sk-...">
-    </div>
-    <button type="submit" class="btn btn-primary">Save Key</button>
-  </form>
-</div>
 
 <div class="section">
   <h3>Change Password</h3>

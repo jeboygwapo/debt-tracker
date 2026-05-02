@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -63,6 +63,30 @@ class MonthlyEntry(Base):
 
     user: Mapped["User"] = relationship(back_populates="monthly_entries")
     debt: Mapped["Debt"] = relationship(back_populates="monthly_entries")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    reads: Mapped[list["NotificationRead"]] = relationship(back_populates="notification", cascade="all, delete-orphan")
+
+
+class NotificationRead(Base):
+    __tablename__ = "notification_reads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    notification: Mapped["Notification"] = relationship(back_populates="reads")
 
 
 class AiCache(Base):
