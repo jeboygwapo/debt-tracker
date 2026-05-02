@@ -17,6 +17,8 @@ COPY app/ ./app/
 COPY static/ ./static/
 COPY alembic/ ./alembic/
 COPY alembic.ini ./
+COPY scripts/ ./scripts/
+COPY CHANGELOG ./
 
 # Data dir — mount a PVC here in Kubernetes
 RUN mkdir -p /data && chown appuser:appgroup /data
