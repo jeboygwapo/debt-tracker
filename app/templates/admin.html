@@ -101,6 +101,7 @@
     <thead>
       <tr>
         <th>Title</th>
+        <th>By</th>
         <th>Sent</th>
         <th>Status</th>
         <th></th>
@@ -110,6 +111,7 @@
     {% for n in notifications %}
     <tr>
       <td data-label="Title"><strong>{{ n.title }}</strong><br><span style="color:var(--muted);font-size:.78rem">{{ n.body[:80] }}{% if n.body|length > 80 %}…{% endif %}</span></td>
+      <td data-label="By" style="font-size:.82rem">{{ n.creator.username if n.creator else '<span style="color:var(--muted)">System</span>' | safe }}</td>
       <td data-label="Sent" style="color:var(--muted);font-size:.82rem">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
       <td data-label="Status">
         {% if n.is_active %}

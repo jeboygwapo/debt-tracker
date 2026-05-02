@@ -187,13 +187,20 @@ async def create_notification(db: AsyncSession, title: str, body: str, created_b
 
 async def get_active_notifications(db: AsyncSession) -> list[Notification]:
     result = await db.execute(
-        select(Notification).where(Notification.is_active == True).order_by(Notification.created_at.desc())
+        select(Notification)
+        .where(Notification.is_active == True)
+        .options(selectinload(Notification.creator))
+        .order_by(Notification.created_at.desc())
     )
     return list(result.scalars().all())
 
 
 async def get_all_notifications(db: AsyncSession) -> list[Notification]:
-    result = await db.execute(select(Notification).order_by(Notification.created_at.desc()))
+    result = await db.execute(
+        select(Notification)
+        .options(selectinload(Notification.creator))
+        .order_by(Notification.created_at.desc())
+    )
     return list(result.scalars().all())
 
 

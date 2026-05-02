@@ -39,7 +39,7 @@ def parse_changelog(version: str) -> str | None:
 async def post_notification(version: str, body: str) -> None:
     from sqlalchemy import select
     from app.db.base import AsyncSessionLocal
-    from app.db.models import Notification, User
+    from app.db.models import Notification
 
     async with AsyncSessionLocal() as db:
         title = f"What's new in v{version}"
@@ -50,13 +50,7 @@ async def post_notification(version: str, body: str) -> None:
             print(f"[post_deploy] Notification for v{version} already exists — skipping.")
             return
 
-        admin = await db.execute(
-            select(User).where(User.is_admin == True).order_by(User.id)
-        )
-        admin_user = admin.scalar_one_or_none()
-        created_by = admin_user.id if admin_user else None
-
-        n = Notification(title=title, body=body, created_by=created_by)
+        n = Notification(title=title, body=body, created_by=None)
         db.add(n)
         await db.commit()
         print(f"[post_deploy] Posted notification: {title}")

@@ -76,6 +76,7 @@ class Notification(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     reads: Mapped[list["NotificationRead"]] = relationship(back_populates="notification", cascade="all, delete-orphan")
+    creator: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by])
 
 
 class NotificationRead(Base):
