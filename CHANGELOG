@@ -1,0 +1,4 @@
+== 0.1.0 ==
+- Notifications: get updates from us directly in the app
+- Cleaner nav: Settings, Admin, and Logout moved into profile menu
+- Dashboard: fixed chart labels and stat card layout

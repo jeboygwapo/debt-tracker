@@ -10,7 +10,7 @@ primary_region = 'sin'
   dockerfile = 'Dockerfile'
 
 [deploy]
-  release_command = 'alembic upgrade head'
+  release_command = 'python3 scripts/post_deploy.py'
 
 [env]
   APP_ENV = 'production'
