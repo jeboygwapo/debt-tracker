@@ -1,0 +1,182 @@
+# Reusable workflow: Python pytest job
+#
+# Generic pytest runner with pip cache, optional dev requirements, marker
+# filtering, JUnit XML upload, and optional artifact upload on failure.
+#
+# Usage from a consumer workflow:
+#
+#   jobs:
+#     unit:
+#       uses: ./.github/workflows/_python-test.yml
+#       with:
+#         python-version: "3.13"
+#         requirements-files: |
+#           requirements.txt
+#         marker-filter: "not e2e and not smoke"
+#         results-name: unit-results
+#       secrets: inherit
+#
+# Inputs are intentionally narrow — adopters override only what they need.
+# Outputs allow downstream jobs to gate on pass/fail without re-running.
+---
+name: _python-test (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to install (e.g. 3.13)"
+        required: false
+        type: string
+        default: "3.13"
+      requirements-files:
+        description: "Newline-separated list of requirements files to install (in order)"
+        required: false
+        type: string
+        default: "requirements.txt"
+      pytest-args:
+        description: "Extra args appended to pytest invocation"
+        required: false
+        type: string
+        default: ""
+      marker-filter:
+        description: "Pytest -m expression (e.g. 'not e2e and not smoke')"
+        required: false
+        type: string
+        default: ""
+      test-path:
+        description: "Path to tests (file or dir)"
+        required: false
+        type: string
+        default: "tests/"
+      results-name:
+        description: "Artifact name for the JUnit XML upload"
+        required: false
+        type: string
+        default: "pytest-results"
+      timeout-minutes:
+        description: "Job timeout in minutes"
+        required: false
+        type: number
+        default: 15
+      working-directory:
+        description: "Working directory for checkout-relative commands"
+        required: false
+        type: string
+        default: "."
+      install-playwright-browsers:
+        description: "Install Playwright browsers (chromium) after pip install"
+        required: false
+        type: boolean
+        default: false
+      env-json:
+        description: "JSON object of extra env vars to inject (string keys+values only)"
+        required: false
+        type: string
+        default: "{}"
+    outputs:
+      result:
+        description: "'success' or 'failure'"
+        value: ${{ jobs.test.outputs.result }}
+
+jobs:
+  test:
+    name: pytest (${{ inputs.results-name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    outputs:
+      result: ${{ steps.run-tests.outcome }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: "pip"
+          cache-dependency-path: |
+            **/requirements*.txt
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r req_file; do
+            req_file="$(echo "$req_file" | xargs)"
+            [ -z "$req_file" ] && continue
+            if [ ! -f "$req_file" ]; then
+              echo "::error::requirements file not found: $req_file"
+              exit 1
+            fi
+            echo "::group::pip install -r $req_file"
+            pip install -r "$req_file"
+            echo "::endgroup::"
+          done <<< "${{ inputs.requirements-files }}"
+
+      - name: Cache Playwright browsers
+        if: inputs.install-playwright-browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: inputs.install-playwright-browsers
+        run: python3 -m playwright install --with-deps chromium
+
+      - name: Export env-json into job env
+        if: inputs.env-json != '{}'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json, os
+          raw = os.environ.get("ENV_JSON_INPUT", "{}")
+          data = json.loads(raw)
+          if not isinstance(data, dict):
+              raise SystemExit("env-json must be a JSON object")
+          for k, v in data.items():
+              if not isinstance(k, str) or not isinstance(v, (str, int, float, bool)):
+                  raise SystemExit(f"env-json values must be primitives: {k}={v!r}")
+              if isinstance(v, bool):
+                  v = "true" if v else "false"
+              print(f"{k}={v}")
+          PY
+        env:
+          ENV_JSON_INPUT: ${{ inputs.env-json }}
+
+      - name: Run pytest
+        id: run-tests
+        shell: bash
+        env:
+          PYTEST_MARKER: ${{ inputs.marker-filter }}
+          PYTEST_PATH: ${{ inputs.test-path }}
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
+          RESULTS_NAME: ${{ inputs.results-name }}
+        run: |
+          set -euo pipefail
+          ARGS=("$PYTEST_PATH" "-v" "--junit-xml=${RESULTS_NAME}.xml")
+          if [ -n "$PYTEST_MARKER" ]; then
+            ARGS+=("-m" "$PYTEST_MARKER")
+          fi
+          if [ -n "$PYTEST_ARGS" ]; then
+            # shellcheck disable=SC2206
+            EXTRA=($PYTEST_ARGS)
+            ARGS+=("${EXTRA[@]}")
+          fi
+          python3 -m pytest "${ARGS[@]}"
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.results-name }}
+          path: ${{ inputs.working-directory }}/${{ inputs.results-name }}.xml
+          retention-days: 14
+          if-no-files-found: warn

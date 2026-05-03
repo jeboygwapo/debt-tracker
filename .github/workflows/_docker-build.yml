@@ -1,0 +1,132 @@
+# Reusable workflow: Docker build (and optional push)
+#
+# Builds an image via docker/build-push-action with GHA layer cache.
+# Default registry is GHCR; pushes use GITHUB_TOKEN (consumer must grant
+# `permissions: packages: write`).
+#
+# Usage:
+#
+#   jobs:
+#     image:
+#       uses: ./.github/workflows/_docker-build.yml
+#       with:
+#         image-name: ghcr.io/${{ github.repository }}
+#         dockerfile-path: Dockerfile
+#         push: true
+#       permissions:
+#         contents: read
+#         packages: write
+#
+# Outputs the canonical sha-tag so downstream deploy jobs can pin exactly.
+---
+name: _docker-build (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: "Fully-qualified image name (e.g. ghcr.io/owner/repo)"
+        required: true
+        type: string
+      dockerfile-path:
+        description: "Path to Dockerfile (relative to context)"
+        required: false
+        type: string
+        default: "Dockerfile"
+      context:
+        description: "Build context directory"
+        required: false
+        type: string
+        default: "."
+      push:
+        description: "Push image to registry"
+        required: false
+        type: boolean
+        default: false
+      registry:
+        description: "Registry hostname (used for docker login)"
+        required: false
+        type: string
+        default: "ghcr.io"
+      registry-username:
+        description: "Registry username (defaults to github.actor)"
+        required: false
+        type: string
+        default: ""
+      extra-tags:
+        description: "Additional docker/metadata-action tag rules (newline-separated)"
+        required: false
+        type: string
+        default: ""
+      platforms:
+        description: "Build platforms (e.g. linux/amd64,linux/arm64)"
+        required: false
+        type: string
+        default: "linux/amd64"
+    secrets:
+      registry-password:
+        description: "Registry password/token. Defaults to GITHUB_TOKEN if push targets GHCR."
+        required: false
+    outputs:
+      image-tag:
+        description: "First (canonical) tag produced (e.g. ghcr.io/owner/repo:sha-abc123)"
+        value: ${{ jobs.build.outputs.image-tag }}
+      image-digest:
+        description: "Image digest (sha256:...)"
+        value: ${{ jobs.build.outputs.image-digest }}
+
+jobs:
+  build:
+    name: build (${{ inputs.image-name }})
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.tag.outputs.image-tag }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ${{ inputs.registry }}
+        if: inputs.push
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ inputs.registry-username != '' && inputs.registry-username || github.actor }}
+          password: ${{ secrets.registry-password != '' && secrets.registry-password || secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.image-name }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+            ${{ inputs.extra-tags }}
+
+      - name: Build and ${{ inputs.push && 'push' || 'load' }}
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.context }}/${{ inputs.dockerfile-path }}
+          push: ${{ inputs.push }}
+          load: ${{ !inputs.push }}
+          platforms: ${{ inputs.platforms }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve canonical sha tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          # First tag from the metadata action — usually the sha- tag
+          first_tag="$(printf '%s\n' "${{ steps.meta.outputs.tags }}" | head -n1)"
+          echo "image-tag=${first_tag}" >> "$GITHUB_OUTPUT"
+          echo "Built and tagged: ${first_tag}"
