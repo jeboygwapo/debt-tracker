@@ -1,0 +1,9 @@
+# Developer / CI-only dependencies (NOT shipped in the runtime image).
+#
+# Phase 1 (smoke) + integration use the deps already pinned in
+# requirements.txt (pytest, httpx, anyio).
+#
+# Phase 2 (E2E) runs a Chromium browser against a dockerised stack.
+# Chromium-only on purpose: Firefox + WebKit add ~250 MB and ~30 s of
+# install time per CI run with no extra signal for our use case.
+pytest-playwright>=0.5.0

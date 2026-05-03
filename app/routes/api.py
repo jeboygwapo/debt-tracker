@@ -26,7 +26,8 @@ async def healthz(db: AsyncSession = Depends(get_db)):
     try:
         from sqlalchemy import text
         await db.execute(text("SELECT 1"))
-        return {"status": "ok"}
+        from app.config import APP_VERSION
+        return {"status": "ok", "version": APP_VERSION}
     except Exception as e:
         return JSONResponse({"status": "error", "detail": str(e)}, status_code=503)
 

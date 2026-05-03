@@ -3,7 +3,7 @@ from pathlib import Path
 
 import bcrypt
 
-APP_VERSION = "0.1.0"
+APP_VERSION = os.getenv("APP_VERSION", "dev")
 
 
 def load_env_file(env_path: Path) -> None:

@@ -92,6 +92,7 @@ async def dashboard(
     phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
     budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * rate
+    strategy = cfg.get("strategy", "avalanche")
 
     total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
     total_cc = sum(
@@ -111,10 +112,10 @@ async def dashboard(
         for m in months_sorted
     ]
 
-    plan_rows, _ = compute_plan(data)
+    plan_rows, _, plan_meta = compute_plan(data, strategy)
     proj_labels = [r["month"] for r in plan_rows]
     proj_totals = [round(r["total"], 2) for r in plan_rows]
-    debt_free = plan_rows[-1]["month"] if plan_rows else "—"
+    debt_free = plan_rows[-1]["month"] if plan_rows and not plan_meta["truncated"] else "—"
 
     peak_debt = max(hist_totals) if hist_totals else 0
     paid_off = max(0, peak_debt - total_now)
@@ -128,7 +129,7 @@ async def dashboard(
             donut_values.append(round(bal, 2))
             donut_colors.append(_PALETTE[i % len(_PALETTE)])
 
-    pay_alloc, cc_priority = allocate_budget(entries, data, budget_php)
+    pay_alloc, cc_priority, attack_target, next_target = allocate_budget(entries, data, budget_php, strategy)
 
     status_rows = [
         {
@@ -180,6 +181,10 @@ async def dashboard(
         "peak_debt": peak_debt,
         "paid_off": paid_off,
         "pct_paid": pct_paid,
+        "attack_target": attack_target,
+        "next_target": next_target,
+        "truncated": plan_meta["truncated"],
+        "strategy": strategy,
     })
 
 
@@ -216,7 +221,10 @@ async def add_month_get(
         base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
         budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * _rate
         saved_entries = data["months"][saved]
-        pay_alloc, cc_priority = allocate_budget(saved_entries, data, budget_php)
+        strategy = cfg.get("strategy", "avalanche")
+        pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+            saved_entries, data, budget_php, strategy
+        )
         total_due = sum(pay_alloc.values())
         summary = {
             "month": saved,
@@ -224,6 +232,8 @@ async def add_month_get(
             "total_due": total_due,
             "pay_alloc": pay_alloc,
             "cc_priority": cc_priority,
+            "attack_target": attack_target,
+            "next_target": next_target,
             "fixed_pmts": data.get("fixed_payments", {}),
             "entries": saved_entries,
         }
@@ -343,6 +353,31 @@ async def edit_month_post(
     return RedirectResponse(f"/edit/{month}?msg=Saved", status_code=303)
 
 
+def _remit_suggestion(data: dict, rate: float, ofw: bool) -> dict:
+    cfg = data.get("income_config", {})
+    latest = latest_month(data)
+    entries = data["months"].get(latest, {})
+
+    total_min = sum(e.get("min_due", 0) for e in entries.values())
+    suggested_sar = round(total_min / rate, 2) if rate and ofw else total_min
+
+    monthly_sar = cfg.get("monthly_sar", 0)
+    expenses_sar = cfg.get("expenses_sar", 0)
+    phone = cfg.get("phone", {})
+    phone_ends = phone.get("ends", "2026-07")
+    phone_sar = phone.get("monthly_sar", 0)
+    phone_active = bool(latest) and latest <= phone_ends
+    net_sar = monthly_sar - expenses_sar - (phone_sar if phone_active else 0)
+
+    return {
+        "suggested_sar": suggested_sar,
+        "available_sar": net_sar,
+        "standard_sar": net_sar,
+        "total_min_php": total_min,
+        "can_cover": net_sar >= suggested_sar,
+    }
+
+
 @router.get("/remit", response_class=HTMLResponse)
 async def remit_get(request: Request, db: AsyncSession = Depends(get_db)):
     try:
@@ -350,11 +385,15 @@ async def remit_get(request: Request, db: AsyncSession = Depends(get_db)):
     except NotAuthenticated:
         return _redirect_login()
 
-    cfg = user.income_config or {}
+    data = await _load_user_data(db, user)
+    cfg = data.get("income_config", {})
     _ofw = cfg.get("ofw_mode", True)
     rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
+    strategy = cfg.get("strategy", "avalanche")
+    suggestion = _remit_suggestion(data, rate, _ofw)
     return templates.TemplateResponse(request, "remit.html", {
-        "active": "remit", "rate": rate, "result": None, "sar_input": "", "ofw_mode": _ofw,
+        "active": "remit", "rate": rate, "result": None, "sar_input": "",
+        "ofw_mode": _ofw, "suggestion": suggestion, "strategy": strategy,
     })
 
 
@@ -369,6 +408,7 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: No
     cfg = data.get("income_config", {})
     _ofw = cfg.get("ofw_mode", True)
     rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
+    strategy = cfg.get("strategy", "avalanche")
     form = await request.form()
     sar_input = str(form.get("sar", ""))
     result = None
@@ -378,26 +418,42 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: No
         php = sar_amount * rate
         latest = latest_month(data)
         entries = data["months"].get(latest, {})
-        standard = (cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)) * rate
-        pay_alloc, cc_priority = allocate_budget(entries, data, php)
+        phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
+        phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
+        base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
+        phone_active = bool(latest) and latest <= phone_ends
+        standard = (base_sar - (phone_sar if phone_active else 0)) * rate
+        pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+            entries, data, php, strategy
+        )
+        bonus_php = max(0, php - standard)
         result = {
             "sar": sar_amount, "php": php, "standard": standard,
             "pay_alloc": pay_alloc, "entries": entries,
             "cc_priority": cc_priority,
+            "attack_target": attack_target,
+            "next_target": next_target,
             "fixed_pmts": data.get("fixed_payments", {}),
+            "bonus_php": bonus_php,
+            "bonus_alloc_to": attack_target,
         }
     except ValueError:
         pass
 
+    suggestion = _remit_suggestion(data, rate, _ofw)
     return templates.TemplateResponse(request, "remit.html", {
-        "active": "remit", "rate": rate, "result": result, "sar_input": sar_input, "ofw_mode": _ofw,
+        "active": "remit", "rate": rate, "result": result, "sar_input": sar_input,
+        "ofw_mode": _ofw, "suggestion": suggestion, "strategy": strategy,
     })
+
+
+VALID_STRATEGIES = ("avalanche", "snowball", "cash_flow")
 
 
 @router.get("/plan", response_class=HTMLResponse)
 async def plan_page(
     request: Request,
-    strategy: str = "avalanche",
+    strategy: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -406,10 +462,43 @@ async def plan_page(
         return _redirect_login()
 
     data = await _load_user_data(db, user)
-    rows, payoffs = compute_plan(data, strategy)
+    cfg = data.get("income_config", {})
+
+    effective_strategy = strategy if strategy in VALID_STRATEGIES else cfg.get("strategy", "avalanche")
+    rows, payoffs, plan_meta = compute_plan(data, effective_strategy)
     return templates.TemplateResponse(request, "plan.html", {
-        "active": "plan", "rows": rows, "payoffs": payoffs, "strategy": strategy,
+        "active": "plan",
+        "rows": rows,
+        "payoffs": payoffs,
+        "strategy": effective_strategy,
+        "truncated": plan_meta["truncated"],
+        "attack_target": plan_meta["attack_target"],
+        "next_target": plan_meta["next_target"],
     })
+
+
+@router.post("/plan/strategy")
+async def plan_set_strategy(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
+):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return _redirect_login()
+
+    form = await request.form()
+    new_strategy = str(form.get("strategy", "")).strip()
+    if new_strategy not in VALID_STRATEGIES:
+        return RedirectResponse("/plan", status_code=303)
+
+    cfg = dict(user.income_config or {})
+    if cfg.get("strategy") != new_strategy:
+        cfg["strategy"] = new_strategy
+        await update_income_config(db, user, cfg)
+
+    return RedirectResponse("/plan", status_code=303)
 
 
 @router.get("/report/{month}", response_class=HTMLResponse)
@@ -438,7 +527,10 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
 
     entries = data["months"][month]
     fixed_pmts = data.get("fixed_payments", {})
-    pay_alloc, cc_priority = allocate_budget(entries, data, budget_php)
+    strategy = cfg.get("strategy", "avalanche")
+    pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+        entries, data, budget_php, strategy
+    )
 
     months_sorted = sorted(data["months"].keys())
     hist_totals = [
@@ -450,8 +542,8 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
     paid_off = max(0, peak_debt - total_now)
     pct_paid = round(paid_off / peak_debt * 100, 1) if peak_debt > 0 else 0
 
-    plan_rows, payoffs = compute_plan(data)
-    debt_free = plan_rows[-1]["month"] if plan_rows else "—"
+    plan_rows, payoffs, plan_meta = compute_plan(data, strategy)
+    debt_free = plan_rows[-1]["month"] if plan_rows and not plan_meta["truncated"] else "—"
     monthly_interest = sum(
         (e.get("balance", 0) or 0) * data["debts"].get(n, {}).get("apr_monthly_pct", 0) / 100
         for n, e in entries.items()
@@ -469,6 +561,8 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
         "fixed_pmts": fixed_pmts,
         "pay_alloc": pay_alloc,
         "cc_priority": cc_priority,
+        "attack_target": attack_target,
+        "next_target": next_target,
         "entry_interest": entry_interest,
         "total_now": total_now,
         "peak_debt": peak_debt,
@@ -479,6 +573,7 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
         "debt_free": debt_free,
         "ofw_mode": ofw_mode,
         "rate": rate,
+        "strategy": strategy,
     })
 
 
@@ -496,8 +591,10 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
         "currency_sym": cfg.get("currency_symbol", "₱"),
         "income_cur": cfg.get("income_currency", "SAR"),
         "ofw_mode": cfg.get("ofw_mode", True),
+        "strategy": cfg.get("strategy", "avalanche"),
         "msg": None,
         "is_admin": user.is_admin,
+        "has_ai": bool(settings.openai_api_key),
     })
 
 
@@ -540,12 +637,6 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
         except ValueError:
             msg = "Invalid income config values."
 
-    elif action == "apikey":
-        key = str(form.get("apikey", "")).strip()
-        if key:
-            save_env_value(settings.env_file, "OPENAI_API_KEY", key)
-            msg = "API key saved."
-
     elif action == "mode":
         cfg = dict(user.income_config or {})
         cfg["ofw_mode"] = form.get("ofw_mode") == "1"
@@ -566,6 +657,16 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
             msg = f"Currency updated: income {inc_cur}, debt {symbol}"
         else:
             msg = "Invalid currency selection."
+
+    elif action == "strategy":
+        new_strategy = str(form.get("strategy", "avalanche"))
+        if new_strategy not in ("avalanche", "snowball", "cash_flow"):
+            msg = "❌ Invalid strategy."
+        else:
+            cfg = dict(user.income_config or {})
+            cfg["strategy"] = new_strategy
+            await update_income_config(db, user, cfg)
+            msg = f"✓ Strategy set to {new_strategy.replace('_', ' ').title()}."
 
     elif action == "password":
         current = str(form.get("current_password", ""))
@@ -588,6 +689,8 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
         "currency_sym": cfg.get("currency_symbol", "₱"),
         "income_cur": cfg.get("income_currency", "SAR"),
         "ofw_mode": cfg.get("ofw_mode", True),
+        "strategy": cfg.get("strategy", "avalanche"),
         "msg": msg,
         "is_admin": user.is_admin,
+        "has_ai": bool(settings.openai_api_key),
     })

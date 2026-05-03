@@ -56,7 +56,7 @@
   <p style="font-size:.875rem;margin-bottom:20px">Add your debts and record this month's balances to get started.</p>
   <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
     <a href="/debts" class="btn btn-primary">Set Up My Debts</a>
-    <a href="/add" class="btn btn-back">Add This Month's Data</a>
+    <a href="/add" class="btn btn-back">Add Monthly Snapshot</a>
   </div>
 </div>
 {% else %}
@@ -91,7 +91,22 @@
 
 <div class="section" style="border:2px solid #854d0e">
   <h3 style="color:#fde68a">💰 {% if is_latest %}Pay This Month{% else %}Payment Plan — {{ viewing }}{% endif %} — Budget {{ budget_php | peso }}</h3>
-  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">Avalanche: minimums on all, everything extra → ATTACK card first.</p>
+  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">
+    Strategy: <strong style="color:var(--text2)">{{ strategy.replace('_', ' ').title() if strategy else 'Avalanche' }}</strong>
+    <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+      <span class="tip-icon">i</span>
+      <span class="tip-body">
+        {% if strategy == 'snowball' %}<strong>Snowball strategy:</strong> Pay minimums on all debts, then send everything extra to the smallest-balance card first. Quick wins build momentum.
+        {% elif strategy == 'cash_flow' %}<strong>Cash Flow strategy:</strong> Pay minimums on all debts, then send everything extra to the highest-minimum-due card first. Frees up monthly cash faster.
+        {% else %}<strong>Avalanche strategy:</strong> Pay minimums on all debts, then send everything extra to the highest-APR card first. Saves the most interest over time.
+        {% endif %}
+      </span>
+    </span>
+    {% if strategy == 'snowball' %}— Pay smallest balance first. Quick wins for motivation.
+    {% elif strategy == 'cash_flow' %}— Pay highest minimum due first. Frees up monthly cash faster.
+    {% else %}— Pay highest APR rate first. Saves most interest.
+    {% endif %}
+  </p>
   <table class="table-card">
     <thead>
       <tr>
@@ -118,7 +133,24 @@
       {% set alloc = pay_alloc.get(n, 0) %}
       {% set extra = alloc - mn %}
       <tr>
-        <td data-label="#">{% if rank == 1 %}<span class="attack">ATTACK</span>{% else %}#{{ rank }}{% endif %}</td>
+        <td data-label="#">
+          {% if attack_target is defined and attack_target and n == attack_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="attack">ATTACK</span>
+              <span class="tip-body" style="left:auto;right:0">Surplus budget targets this debt first. Will be paid off fastest.</span>
+            </span>
+          {% elif next_target is defined and next_target and n == next_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="badge" style="background:#1e3a8a;color:#93c5fd">NEXT</span>
+              <span class="tip-body" style="left:auto;right:0">Becomes ATTACK target once current ATTACK debt is paid off.</span>
+            </span>
+          {% elif rank == 1 and not attack_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="attack">ATTACK</span>
+              <span class="tip-body" style="left:auto;right:0">Surplus budget targets this debt first. Will be paid off fastest.</span>
+            </span>
+          {% else %}#{{ rank }}{% endif %}
+        </td>
         <td data-label="Card">{{ n }}</td>
         <td data-label="Balance">{{ bal | peso }}</td>
         <td data-label="Min Due">{{ mn | peso }}</td>

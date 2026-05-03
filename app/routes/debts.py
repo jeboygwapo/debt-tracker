@@ -71,6 +71,9 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db), _: Non
     fixed_ends = str(form.get("fixed_ends", "")).strip() or None
     fixed_reduced_monthly = _float(form.get("fixed_reduced_monthly"))
     fixed_reduced_threshold = _float(form.get("fixed_reduced_threshold"))
+    allow_prepayment = (
+        form.get("allow_prepayment") == "1" and debt_type != "credit_card"
+    )
 
     existing = await get_debts(db, user.id)
     sort_order = max((d.sort_order for d in existing), default=-1) + 1
@@ -87,6 +90,7 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db), _: Non
         fixed_ends=fixed_ends,
         fixed_reduced_monthly=fixed_reduced_monthly,
         fixed_reduced_threshold=fixed_reduced_threshold,
+        allow_prepayment=allow_prepayment,
         sort_order=sort_order,
     )
     return RedirectResponse("/debts?msg=Debt+added.", status_code=303)
@@ -151,6 +155,9 @@ async def debt_edit_post(
         })
 
     is_fixed = form.get("is_fixed") == "1"
+    allow_prepayment = (
+        form.get("allow_prepayment") == "1" and edit_type != "credit_card"
+    )
     await update_debt(
         db,
         debt,
@@ -163,6 +170,7 @@ async def debt_edit_post(
         fixed_ends=str(form.get("fixed_ends", "")).strip() or None,
         fixed_reduced_monthly=_float(form.get("fixed_reduced_monthly")) if is_fixed else None,
         fixed_reduced_threshold=_float(form.get("fixed_reduced_threshold")) if is_fixed else None,
+        allow_prepayment=allow_prepayment,
     )
     return RedirectResponse(f"/debts/{debt_id}/edit?msg=Saved.", status_code=303)
 

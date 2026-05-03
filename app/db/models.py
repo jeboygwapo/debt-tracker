@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +39,7 @@ class Debt(Base):
     fixed_ends: Mapped[Optional[str]] = mapped_column(String(7))        # YYYY-MM
     fixed_reduced_monthly: Mapped[Optional[float]] = mapped_column(Float)
     fixed_reduced_threshold: Mapped[Optional[float]] = mapped_column(Float)
+    allow_prepayment: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text('false'))
 
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

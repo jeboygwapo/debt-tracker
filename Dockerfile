@@ -23,6 +23,8 @@ COPY CHANGELOG ./
 # Data dir — mount a PVC here in Kubernetes
 RUN mkdir -p /data && chown appuser:appgroup /data
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 ENV DATA_DIR=/data
 
 # Drop to non-root

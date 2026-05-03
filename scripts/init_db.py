@@ -5,6 +5,7 @@ Run from project root: python scripts/init_db.py
 """
 import asyncio
 import getpass
+import os
 import secrets
 import subprocess
 import sys
@@ -42,7 +43,22 @@ def run_migrations() -> None:
     print("[init] Migrations OK.")
 
 
+MIN_PASSWORD_LEN = 12
+
+
 async def seed_admin() -> None:
+    """Seed an admin user.
+
+    Two modes:
+
+    * **Non-interactive (CI / E2E):** if both ``CI_ADMIN_USER`` and
+      ``CI_ADMIN_PASS`` env vars are set, create that user without prompts.
+      Idempotent: skipped when any user already exists.
+    * **Interactive (first-run on a fresh deploy):** prompts via stdin/getpass.
+
+    The interactive prompt is preserved so existing developer workflows are
+    unaffected; the env-var path simply short-circuits when both vars are set.
+    """
     from app.db.base import AsyncSessionLocal
     from app.db.crud import create_user, get_all_users
 
@@ -52,12 +68,22 @@ async def seed_admin() -> None:
             print(f"[init] DB already has {len(users)} user(s). Skipping admin seed.")
             return
 
+        ci_user = os.environ.get("CI_ADMIN_USER", "").strip()
+        ci_pass = os.environ.get("CI_ADMIN_PASS", "")
+        if ci_user and ci_pass:
+            if len(ci_pass) < MIN_PASSWORD_LEN:
+                print(f"[error] CI_ADMIN_PASS must be ≥{MIN_PASSWORD_LEN} chars.")
+                sys.exit(1)
+            await create_user(db, username=ci_user, password=ci_pass, is_admin=True)
+            print(f"[init] Admin user '{ci_user}' created (non-interactive).")
+            return
+
         print("\n[init] No users found. Create admin account.")
         username = input("  Username [admin]: ").strip() or "admin"
 
         while True:
-            pw = getpass.getpass("  Password (min 12 chars): ")
-            if len(pw) < 12:
+            pw = getpass.getpass(f"  Password (min {MIN_PASSWORD_LEN} chars): ")
+            if len(pw) < MIN_PASSWORD_LEN:
                 print("  Password too short, try again.")
                 continue
             pw2 = getpass.getpass("  Confirm password: ")

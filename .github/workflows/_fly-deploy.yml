@@ -1,0 +1,223 @@
+# Reusable workflow: Fly.io deploy
+#
+# Deploys a Fly.io app, waits for the health endpoint to return 200, and
+# automatically rolls back to the previous release if the health check fails.
+# Posts a deployment status to GitHub for visibility in the PR/commit timeline.
+#
+# Usage:
+#
+#   jobs:
+#     deploy:
+#       uses: ./.github/workflows/_fly-deploy.yml
+#       with:
+#         app-name: personal-debt-tracker
+#         fly-host: personal-debt-tracker.fly.dev
+#         health-path: /api/healthz
+#         environment: production
+#       secrets:
+#         FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+#       permissions:
+#         contents: read
+#         deployments: write
+#
+# Notes:
+# - `image-tag` is optional. If unset, `flyctl deploy --remote-only` builds
+#   from the working tree (consistent with the previous CD behaviour).
+# - Rollback uses `flyctl releases rollback <previous-version>`. Auto-rollback
+#   is enabled by default; set `auto-rollback: false` to disable.
+---
+name: _fly-deploy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: "Fly.io app name"
+        required: true
+        type: string
+      fly-host:
+        description: "Public hostname for post-deploy health probe"
+        required: true
+        type: string
+      region:
+        description: "Primary region (informational only — fly.toml is source of truth)"
+        required: false
+        type: string
+        default: ""
+      image-tag:
+        description: "Pre-built image to deploy (e.g. ghcr.io/owner/repo:sha-abc). If empty, build from source."
+        required: false
+        type: string
+        default: ""
+      health-path:
+        description: "Health endpoint path (must return 200)"
+        required: false
+        type: string
+        default: "/api/healthz"
+      health-timeout-seconds:
+        description: "Total wait budget for health check"
+        required: false
+        type: number
+        default: 60
+      auto-rollback:
+        description: "Auto-rollback on failed health check"
+        required: false
+        type: boolean
+        default: true
+      environment:
+        description: "GitHub deployment environment (e.g. production, staging)"
+        required: false
+        type: string
+        default: "production"
+      working-directory:
+        description: "Where fly.toml lives"
+        required: false
+        type: string
+        default: "."
+    secrets:
+      FLY_API_TOKEN:
+        description: "Fly.io API token (org or app-scoped)"
+        required: true
+    outputs:
+      release-version:
+        description: "Fly release version after deploy (e.g. v123)"
+        value: ${{ jobs.deploy.outputs.release-version }}
+      health-status:
+        description: "'healthy' or 'rolled-back' or 'failed'"
+        value: ${{ jobs.deploy.outputs.health-status }}
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.app-name }} (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://${{ inputs.fly-host }}
+    permissions:
+      contents: read
+      deployments: write
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    outputs:
+      release-version: ${{ steps.release.outputs.version }}
+      health-status: ${{ steps.rollback.outputs.status || steps.health.outputs.status }}
+
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Capture previous release for rollback
+        id: previous
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Pull the most recent SUCCESS release version. flyctl JSON keys
+          # vary across versions (Version vs version, Status vs status), so
+          # we normalise via lowercased keys.
+          # jq parser: tolerate both Version/version, Status/status casings.
+          PREV="$(flyctl releases --app "${{ inputs.app-name }}" --json 2>/dev/null \
+            | jq -r '[.[] | (with_entries(.key |= ascii_downcase)) | select(.status == "succeeded")] | .[0].version // ""' \
+            || true)"
+          if [ -z "${PREV}" ]; then
+            echo "::warning::No previous successful release found — auto-rollback disabled for this deploy."
+            echo "version=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Previous successful release: ${PREV}"
+            echo "version=${PREV}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy from source
+        if: inputs.image-tag == ''
+        run: flyctl deploy --remote-only --app "${{ inputs.app-name }}"
+
+      - name: Deploy pre-built image
+        if: inputs.image-tag != ''
+        run: |
+          flyctl deploy --remote-only \
+            --app "${{ inputs.app-name }}" \
+            --image "${{ inputs.image-tag }}"
+
+      - name: Capture new release version
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEW="$(flyctl releases --app "${{ inputs.app-name }}" --json 2>/dev/null \
+            | jq -r '(.[0] // {}) | with_entries(.key |= ascii_downcase) | .version // ""' \
+            || true)"
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "New release: ${NEW}"
+
+      - name: Post-deploy health check
+        id: health
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${{ inputs.fly-host }}${{ inputs.health-path }}"
+          BUDGET="${{ inputs.health-timeout-seconds }}"
+          INTERVAL=3
+          ELAPSED=0
+          echo "Probing ${URL} for up to ${BUDGET}s"
+          while [ "$ELAPSED" -lt "$BUDGET" ]; do
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
+            if [ "$CODE" = "200" ]; then
+              echo "Healthy after ${ELAPSED}s (HTTP 200)"
+              echo "status=healthy" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "  attempt at ${ELAPSED}s -> HTTP ${CODE}"
+            sleep "$INTERVAL"
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "::error::Health check never returned 200 within ${BUDGET}s (last code: ${CODE:-unknown})"
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Auto-rollback on health failure
+        id: rollback
+        if: failure() && steps.health.outcome == 'failure' && inputs.auto-rollback && steps.previous.outputs.version != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV="${{ steps.previous.outputs.version }}"
+          APP="${{ inputs.app-name }}"
+          echo "::warning::Rolling back ${APP} to ${PREV}"
+          # Prefer non-interactive `--yes` flag (recent flyctl). Fall back to
+          # piping "yes" for older versions that prompt for confirmation.
+          if flyctl releases rollback --help 2>&1 | grep -q -- "--yes"; then
+            flyctl releases rollback "${PREV}" --app "${APP}" --yes
+          else
+            yes | flyctl releases rollback "${PREV}" --app "${APP}"
+          fi
+          echo "Rollback complete."
+          echo "status=rolled-back" >> "$GITHUB_OUTPUT"
+
+      - name: Deployment summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Fly.io deploy: ${{ inputs.app-name }}"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Environment | ${{ inputs.environment }} |"
+            echo "| App | ${{ inputs.app-name }} |"
+            echo "| Host | https://${{ inputs.fly-host }} |"
+            echo "| Image tag | ${{ inputs.image-tag != '' && inputs.image-tag || 'built from source' }} |"
+            echo "| New release | ${{ steps.release.outputs.version || 'n/a' }} |"
+            echo "| Previous release | ${{ steps.previous.outputs.version || 'n/a' }} |"
+            echo "| Health status | ${{ steps.rollback.outputs.status || steps.health.outputs.status || 'unknown' }} |"
+            echo ""
+            echo "### Manual rollback"
+            echo ""
+            echo "\`\`\`bash"
+            echo "flyctl releases list --app ${{ inputs.app-name }}"
+            echo "flyctl releases rollback <version> --app ${{ inputs.app-name }}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

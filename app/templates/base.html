@@ -103,6 +103,8 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
 .tab-active{background:#3b82f6!important;color:#fff!important}
 .qbtn{padding:1px 7px;border-radius:999px;border:none;font-size:.7rem;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;background:var(--border);color:var(--muted)}
 .qbtn:hover{background:var(--border2);color:var(--text)}
+.quick-row{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:4px;vertical-align:middle}
+.quick-row .qbtn{margin-left:0}
 .qbtn-green{background:#166534;color:#86efac}.qbtn-green:hover{background:#15803d;color:#fff}
 .qbtn-blue{background:#1d4ed8;color:#bfdbfe}.qbtn-blue:hover{background:#2563eb;color:#fff}
 .qbtn-red{background:#7f1d1d;color:#fca5a5}.qbtn-red:hover{background:#991b1b;color:#fff}
@@ -110,6 +112,18 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
 .chart-toggle button{padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);font-size:.72rem;font-weight:600;cursor:pointer;transition:.15s}
 .chart-toggle button:hover{background:var(--border);color:var(--text)}
 .chart-toggle button.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
+
+/* ── Tooltips ── */
+.tip{position:relative;display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+.tip-icon{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--border);color:var(--text2);font-size:.65rem;font-weight:700;text-align:center;line-height:14px;cursor:help;user-select:none;font-family:Georgia,serif;font-style:italic}
+.tip-icon:hover,.tip:focus .tip-icon{background:var(--text2);color:var(--bg)}
+.tip-body{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:.75rem;color:var(--text2);width:max-content;max-width:240px;box-shadow:0 4px 12px rgba(0,0,0,.3);line-height:1.4;font-weight:400;text-transform:none;letter-spacing:0;white-space:normal}
+.tip:hover .tip-body,.tip:focus .tip-body,.tip.active .tip-body{display:block}
+.tip-body strong{color:var(--text)}
+.tip-right .tip-body{left:auto;right:0}
+@media(max-width:640px){
+  .tip-body{max-width:200px;font-size:.72rem}
+}
 
 /* ── Mobile responsive tables ── */
 @media(max-width:640px){
@@ -139,6 +153,10 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
 }
 @media(max-width:360px){
   .grid{grid-template-columns:1fr}
+}
+@media (max-width: 480px) {
+  .quick-row{display:flex;flex-direction:column;align-items:stretch;margin-left:0;margin-top:6px;gap:6px}
+  .quick-row .qbtn{width:100%;text-align:center;padding:6px 8px;margin-left:0}
 }
 </style>
 </head>
@@ -189,6 +207,9 @@ document.addEventListener('click', function(e) {
   if (menu && wrapper && !wrapper.contains(e.target) && !menu.contains(e.target)) {
     menu.classList.remove('open');
   }
+  document.querySelectorAll('.tip.active').forEach(t => {
+    if (!t.contains(e.target)) t.classList.remove('active');
+  });
 });
 (function pollNotifications() {
   const badge = document.getElementById('notif-badge');

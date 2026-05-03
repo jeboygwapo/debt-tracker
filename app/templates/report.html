@@ -129,7 +129,7 @@ tr:last-child td{border-bottom:none}
 
   <!-- PAYMENT PLAN -->
   <div class="section">
-    <h2>Payment Allocation — Avalanche Method</h2>
+    <h2>Payment Allocation — {{ strategy.replace('_', ' ').title() if strategy else 'Avalanche' }}</h2>
     <table>
       <thead>
         <tr>
