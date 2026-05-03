@@ -20,7 +20,7 @@
       </div>
       <div>
         <label>Type</label>
-        <select name="type">
+        <select name="type" id="type-edit" onchange="togglePrepayVisibility('edit')">
           <option value="credit_card" {{ 'selected' if debt.type == 'credit_card' }}>Credit Card</option>
           <option value="personal_loan" {{ 'selected' if debt.type == 'personal_loan' }}>Personal Loan</option>
           <option value="other" {{ 'selected' if debt.type == 'other' }}>Other</option>
@@ -43,6 +43,18 @@
         <input type="checkbox" id="is-fixed-edit" name="is_fixed" value="1"
                {{ 'checked' if debt.is_fixed }} onchange="toggleFixed('edit')">
         <span style="font-size:.85rem;color:var(--text2)">Fixed monthly payment (loan / installment)</span>
+      </label>
+    </div>
+
+    <div id="prepay-row-edit" style="margin:12px 0;display:{{ 'none' if debt.type == 'credit_card' else 'block' }}">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" name="allow_prepayment" value="1"
+               {% if debt.allow_prepayment %}checked{% endif %}>
+        <span style="font-size:.85rem;color:var(--text2)">Allow prepayment</span>
+        <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+          <span class="tip-icon">i</span>
+          <span class="tip-body"><strong>Allow prepayment:</strong> Enable if your bank accepts extra payments without penalty. When ON, surplus budget will pay down this loan early.</span>
+        </span>
       </label>
     </div>
 
@@ -105,6 +117,13 @@ function toggleFixed(suffix) {
   const cb = document.getElementById('is-fixed-' + suffix);
   const fields = document.getElementById('fixed-fields-' + suffix);
   fields.style.display = cb.checked ? 'block' : 'none';
+}
+
+function togglePrepayVisibility(suffix) {
+  const sel = document.getElementById('type-' + suffix);
+  const row = document.getElementById('prepay-row-' + suffix);
+  if (!sel || !row) return;
+  row.style.display = sel.value === 'credit_card' ? 'none' : 'block';
 }
 
 function showDeleteConfirm() {
