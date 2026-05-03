@@ -54,7 +54,7 @@ async def test_smoke_014_admin_page(smoke_authed_client):
     assert "User Management" in r.text
 
 
-async def test_smoke_017_logout_clears_session(smoke_authed_client, smoke_client_no_redirect):
+async def test_smoke_017_logout_clears_session(smoke_authed_client):
     """Logging out then hitting / must redirect to /welcome (not stay on dashboard)."""
     await smoke_authed_client.get("/logout")
     r = await smoke_authed_client.get("/", follow_redirects=False)

@@ -164,7 +164,7 @@ jobs:
           ELAPSED=0
           echo "Probing ${URL} for up to ${BUDGET}s"
           while [ "$ELAPSED" -lt "$BUDGET" ]; do
-            CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
+            CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
             if [ "$CODE" = "200" ]; then
               echo "Healthy after ${ELAPSED}s (HTTP 200)"
               echo "status=healthy" >> "$GITHUB_OUTPUT"

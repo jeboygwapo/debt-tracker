@@ -25,7 +25,7 @@ def _ensure_some_data(page, base_url):
     page.wait_for_load_state("networkidle")
 
 
-def test_strategy_snowball_persists_via_plan_form(logged_in_page, base_url):
+def test_strategy_snowball_persists_via_plan_form(logged_in_page, base_url, _seed_debts):
     _ensure_some_data(logged_in_page, base_url)
 
     logged_in_page.goto(f"{base_url}/plan")

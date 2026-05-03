@@ -7,7 +7,7 @@ on:
     branches: ["**"]
   schedule:
     # Nightly read-only smoke against prod (18:00 UTC = 02:00 SGT)
-    # Skips automatically when app is scaled to 0 (curl will fail, job marked failure)
+    # If app is scaled to 0, curl fails and this job fails — intended, acts as an alert.
     - cron: "0 18 * * *"
   workflow_dispatch:
     inputs:
@@ -221,7 +221,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Nightly read-only smoke against prod
   # Hits public health + landing endpoints only. No auth, no writes.
-  # Skips gracefully if app is scaled to 0 (job will fail and notify).
+  # If app is scaled to 0, curl fails and this job fails — intended, acts as an alert.
   # ---------------------------------------------------------------------------
   nightly-prod-smoke:
     name: Nightly Prod Smoke

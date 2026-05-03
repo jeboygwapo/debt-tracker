@@ -22,7 +22,7 @@ async def test_smoke_022_security_headers_present(smoke_client):
 
 async def test_smoke_023_request_size_limit_413(smoke_client):
     """1 MB cap on Content-Length — anything larger must 413 before routing."""
-    oversized = "x" * (2 * 1024 * 1024)  # 2 MB
+    oversized = b"x" * (2 * 1024 * 1024)  # 2 MB
     r = await smoke_client.post(
         "/login",
         content=oversized,

@@ -14,4 +14,5 @@ async def test_smoke_001_healthz_ok(smoke_client):
     r = await smoke_client.get("/api/healthz")
     assert r.status_code == 200
     body = r.json()
-    assert body == {"status": "ok"}
+    assert body["status"] == "ok"
+    assert "version" in body

@@ -22,7 +22,7 @@ def _seed_month(page, base_url, month: str = "2026-10"):
     page.wait_for_load_state("networkidle")
 
 
-def test_remit_calculates_and_renders_allocation(logged_in_page, base_url):
+def test_remit_calculates_and_renders_allocation(logged_in_page, base_url, _seed_debts):
     _seed_month(logged_in_page, base_url)
 
     logged_in_page.goto(f"{base_url}/remit")

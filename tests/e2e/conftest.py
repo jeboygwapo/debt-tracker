@@ -150,3 +150,45 @@ def logged_in_page(page, base_url, admin_credentials):
     # Either we are at /, /debts (new user), or /welcome flow has consumed us.
     page.wait_for_load_state("networkidle")
     return page
+
+
+@pytest.fixture
+def _seed_debts(logged_in_page, base_url):
+    """Ensure at least one debt exists and OFW mode is active.
+
+    Tests that fill ``d_0_*`` fields on ``/add`` require the debt row inputs
+    to render. Tests that assert ``PHP Received`` require OFW mode. This
+    fixture handles both preconditions via the UI so the test session matches
+    production behaviour.
+
+    Usage: request ``_seed_debts`` explicitly in tests that need it.
+    """
+    page = logged_in_page
+
+    # ── Step 1: create a seed debt via the /debts form ------------------
+    page.goto(f"{base_url}/debts")
+    page.wait_for_load_state("networkidle")
+
+    # Only create when no debt rows are present to keep the fixture idempotent.
+    if page.locator("table tbody tr").count() == 0:
+        page.click('button:has-text("+ Add Debt")')
+        page.fill('input[name="name"]', "Seed Card")
+        page.select_option('select[name="type"]', "credit_card")
+        page.fill('input[name="apr_monthly_pct"]', "2.5")
+        page.click('button:has-text("Save")')
+        page.wait_for_load_state("networkidle")
+
+    # ── Step 2: enable OFW mode if not already active -------------------
+    page.goto(f"{base_url}/settings")
+    page.wait_for_load_state("networkidle")
+    settings_html = page.content()
+
+    # The mode toggle button text is "Switch to Budget Mode" when OFW is ON,
+    # and "Switch to OFW Mode" (or similar) when OFW is OFF. Enable only if off.
+    if "Switch to OFW Mode" in settings_html or "ofw_mode" not in settings_html.lower():
+        ofw_toggle = page.locator('form[action="/settings"] button[name="action"][value="mode"]').first
+        if ofw_toggle.count() > 0:
+            ofw_toggle.click()
+            page.wait_for_load_state("networkidle")
+
+    return page
