@@ -137,27 +137,31 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      # pytest-playwright lives in requirements-dev.txt, not requirements.txt.
+      # Without the dev install the next "playwright install" step fails with
+      # "No module named playwright".
+      - name: Install dependencies (runtime + dev)
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
           restore-keys: |
             playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
-        # TODO: Test Auto Engineer to confirm playwright is in requirements.txt
-        # If not, this fails — they'll add it during their parallel work.
         run: python3 -m playwright install --with-deps chromium
-        continue-on-error: false
 
       # TODO: Test Auto Engineer to provide tests/e2e/docker-compose.test.yml
       # before this job will function. Stack must expose app on a known port.
