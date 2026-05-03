@@ -122,3 +122,56 @@ async def test_logout(authed_client):
     assert r.status_code == 200
     r2 = await authed_client.get("/")
     assert "Sign In" in r2.text or "login" in r2.url.path
+
+
+@pytest.mark.anyio
+async def test_landing_page_loads(client):
+    r = await client.get("/welcome")
+    assert r.status_code == 200
+    assert "Sign In" in r.text or "Get Started" in r.text
+
+
+@pytest.mark.anyio
+async def test_landing_page_authenticated_redirects(authed_client):
+    from httpx import ASGITransport, AsyncClient
+    from app import create_app
+    from tests.conftest import get_csrf_token, TEST_USER, TEST_PASS
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+        follow_redirects=False,
+    ) as c:
+        token = await get_csrf_token(c, "/login")
+        await c.post("/login", data={"username": TEST_USER, "password": TEST_PASS, "csrf_token": token})
+        r = await c.get("/welcome")
+        assert r.status_code == 302
+        assert r.headers["location"] == "/"
+
+
+@pytest.mark.anyio
+async def test_rate_limit_lockout(client):
+    """After 5 failed logins the IP is locked out and returns 429."""
+    from app.ratelimit import _attempts, _lock
+
+    with _lock:
+        _attempts.clear()
+
+    for _ in range(5):
+        token = await get_csrf_token(client, "/login")
+        await client.post("/login", data={
+            "username": "testadmin",
+            "password": "BadPassword999!",
+            "csrf_token": token,
+        })
+
+    token = await get_csrf_token(client, "/login")
+    r = await client.post("/login", data={
+        "username": "testadmin",
+        "password": "BadPassword999!",
+        "csrf_token": token,
+    })
+    assert r.status_code == 429 or "locked" in r.text.lower() or "too many" in r.text.lower()
+
+    # clear lockout so subsequent authed_client fixtures can log in
+    with _lock:
+        _attempts.clear()

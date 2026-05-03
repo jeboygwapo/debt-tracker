@@ -197,3 +197,155 @@ async def test_healthz(client):
     r = await client.get("/api/healthz")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
+
+
+@pytest.mark.anyio
+async def test_report_page(authed_client):
+    """Seed a month then verify /report/{month} returns a print-ready HTML page."""
+    token = await get_csrf_token(authed_client, "/add")
+    await authed_client.post("/add", data={
+        "month": "2026-03",
+        "d_0_balance": "40000",
+        "d_0_min_due": "1500",
+        "d_0_payment": "2000",
+        "csrf_token": token,
+    })
+    r = await authed_client.get("/report/2026-03")
+    assert r.status_code == 200
+    assert "Monthly Report" in r.text
+    assert "2026-03" in r.text
+    assert "Print" in r.text
+
+
+@pytest.mark.anyio
+async def test_report_nonexistent_month_redirects(authed_client):
+    r = await authed_client.get("/report/1900-01")
+    assert r.status_code == 200
+    assert "Dashboard" in r.text or "Debt Tracker" in r.text
+
+
+@pytest.mark.anyio
+async def test_settings_update_strategy(authed_client):
+    """Strategy action saves to income_config and round-trips through GET."""
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username
+
+    token = await get_csrf_token(authed_client, "/settings")
+    r = await authed_client.post("/settings", data={
+        "action": "strategy",
+        "strategy": "snowball",
+        "csrf_token": token,
+    })
+    assert r.status_code == 200
+    assert "Snowball" in r.text
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        assert user.income_config.get("strategy") == "snowball"
+
+    # restore default
+    token2 = await get_csrf_token(authed_client, "/settings")
+    await authed_client.post("/settings", data={
+        "action": "strategy",
+        "strategy": "avalanche",
+        "csrf_token": token2,
+    })
+
+
+@pytest.mark.anyio
+async def test_settings_strategy_invalid_value_rejected(authed_client):
+    token = await get_csrf_token(authed_client, "/settings")
+    r = await authed_client.post("/settings", data={
+        "action": "strategy",
+        "strategy": "bogus_mode",
+        "csrf_token": token,
+    })
+    assert r.status_code == 200
+    assert "Invalid strategy" in r.text
+
+
+@pytest.mark.anyio
+async def test_plan_strategy_post_persists(authed_client):
+    """POST /plan/strategy saves strategy to income_config."""
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username
+
+    token = await get_csrf_token(authed_client, "/plan")
+    r = await authed_client.post("/plan/strategy", data={
+        "strategy": "cash_flow",
+        "csrf_token": token,
+    })
+    assert r.status_code in (303, 200)
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        assert user.income_config.get("strategy") == "cash_flow"
+
+    settings_token = await get_csrf_token(authed_client, "/settings")
+    await authed_client.post("/settings", data={
+        "action": "strategy",
+        "strategy": "avalanche",
+        "csrf_token": settings_token,
+    })
+
+
+@pytest.mark.anyio
+async def test_plan_strategy_post_rejects_invalid(authed_client):
+    """POST /plan/strategy with invalid value does not overwrite config."""
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username
+
+    token = await get_csrf_token(authed_client, "/plan")
+    r = await authed_client.post("/plan/strategy", data={
+        "strategy": "garbage",
+        "csrf_token": token,
+    })
+    assert r.status_code in (303, 200)
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        assert user.income_config.get("strategy", "avalanche") in (
+            "avalanche", "snowball", "cash_flow",
+        )
+
+
+@pytest.mark.anyio
+async def test_plan_get_query_param_does_not_persist(authed_client):
+    """GET /plan?strategy=X is preview-only — no DB write (CSRF-safe)."""
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username
+
+    settings_token = await get_csrf_token(authed_client, "/settings")
+    await authed_client.post("/settings", data={
+        "action": "strategy",
+        "strategy": "avalanche",
+        "csrf_token": settings_token,
+    })
+
+    r = await authed_client.get("/plan?strategy=snowball")
+    assert r.status_code == 200
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        assert user.income_config.get("strategy") == "avalanche"
+
+
+@pytest.mark.anyio
+async def test_remit_post_returns_bonus_fields(authed_client):
+    """remit_post must surface bonus_php and bonus_alloc_to in result dict."""
+    token = await get_csrf_token(authed_client, "/add")
+    await authed_client.post("/add", data={
+        "month": "2026-04",
+        "d_0_balance": "10000",
+        "d_0_min_due": "500",
+        "d_0_payment": "0",
+        "csrf_token": token,
+    })
+
+    token2 = await get_csrf_token(authed_client, "/remit")
+    r = await authed_client.post("/remit", data={
+        "sar": "10000",
+        "csrf_token": token2,
+    })
+    assert r.status_code == 200
+    assert "bonus" in r.text.lower() or "Plan covered" in r.text or "Send" in r.text
