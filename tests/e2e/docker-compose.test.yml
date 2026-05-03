@@ -1,0 +1,59 @@
+# E2E test stack — DevOps brings this up in CI before running pytest -m e2e.
+#
+# Usage:
+#   docker compose -f tests/e2e/docker-compose.test.yml up -d --build
+#   pytest tests/e2e/ -m e2e -v
+#   docker compose -f tests/e2e/docker-compose.test.yml down -v
+#
+# This is intentionally NOT the same compose file as the dev one at
+# ./docker-compose.yml — that file is for local dev with persistent volumes
+# and a host-mounted .env. The test stack is ephemeral, idempotent, and
+# self-contained.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: e2e_pw_not_a_secret
+      POSTGRES_DB: e2e
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U e2e -d e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    # No host-port publishing — the app talks via the compose network.
+
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      SECRET_KEY: e2e-secret-key-do-not-reuse-in-prod
+      DATABASE_URL: postgresql+asyncpg://e2e:e2e_pw_not_a_secret@db:5432/e2e
+      ALLOW_REGISTRATION: "true"
+      # Non-interactive seed for scripts/init_db.py
+      CI_ADMIN_USER: ${CI_ADMIN_USER:-ci_admin}
+      CI_ADMIN_PASS: ${CI_ADMIN_PASS:-CiAdminPass1234!}
+      AI_DAILY_LIMIT: "100"
+    ports:
+      - "5050:5050"
+    # Override the prod entrypoint so we run init_db.py first (seeds admin),
+    # then exec the normal start.sh (alembic upgrade + uvicorn). init_db.py
+    # is idempotent, so a restart is safe.
+    command:
+      - /bin/sh
+      - -c
+      - "python /app/scripts/init_db.py && exec /bin/sh /app/start.sh"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:5050/api/healthz\").status==200 else 1)'"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
