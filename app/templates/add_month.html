@@ -55,6 +55,7 @@
 {{ tab_nav([('statement', '📋 Statement'), ('payments', '💳 Payments')]) }}
 
 <form method="POST">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
   <div id="panel-statement" class="tab-panel">
     <div class="section">
       <h3>Month</h3>

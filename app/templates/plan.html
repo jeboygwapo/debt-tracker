@@ -3,11 +3,53 @@
 
 <h2>Payoff Plan</h2>
 
-<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">
-  <a href="/plan?strategy=avalanche" class="btn {{ 'btn-primary' if strategy == 'avalanche' else 'btn-back' }}">Avalanche</a>
-  <a href="/plan?strategy=snowball"  class="btn {{ 'btn-primary' if strategy == 'snowball'  else 'btn-back' }}">Snowball</a>
+<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+  <div style="display:inline-flex;align-items:center;gap:6px">
+    <form method="POST" action="/plan/strategy" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="strategy" value="avalanche">
+      <button type="submit" class="btn {{ 'btn-primary' if strategy == 'avalanche' else 'btn-back' }}">Avalanche</button>
+    </form>
+    <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+      <span class="tip-icon">i</span>
+      <span class="tip-body"><strong>Avalanche:</strong> Pay highest APR rate first. Saves most interest over time.</span>
+    </span>
+  </div>
+  <div style="display:inline-flex;align-items:center;gap:6px">
+    <form method="POST" action="/plan/strategy" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="strategy" value="snowball">
+      <button type="submit" class="btn {{ 'btn-primary' if strategy == 'snowball' else 'btn-back' }}">Snowball</button>
+    </form>
+    <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+      <span class="tip-icon">i</span>
+      <span class="tip-body"><strong>Snowball:</strong> Pay smallest balance first. Quick wins build momentum.</span>
+    </span>
+  </div>
+  <div style="display:inline-flex;align-items:center;gap:6px">
+    <form method="POST" action="/plan/strategy" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="strategy" value="cash_flow">
+      <button type="submit" class="btn {{ 'btn-primary' if strategy == 'cash_flow' else 'btn-back' }}">Cash Flow</button>
+    </form>
+    <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+      <span class="tip-icon">i</span>
+      <span class="tip-body"><strong>Cash Flow:</strong> Pay highest minimum due first. Frees up monthly cash faster.</span>
+    </span>
+  </div>
+</div>
+<div style="font-size:.72rem;color:var(--muted);margin-top:-12px;margin-bottom:20px">
+  Selected strategy persists across all pages. Change anytime in <a href="/settings" style="color:#3b82f6">Settings</a>.
 </div>
 
+{% if not payoffs %}
+<div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
+  <div style="font-size:2.5rem;margin-bottom:12px">📊</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:8px">No data yet</p>
+  <p style="font-size:.875rem;margin-bottom:20px">Add at least one month of balances to generate a payoff projection.</p>
+  <a href="/add" class="btn btn-primary">+ Add This Month's Data</a>
+</div>
+{% else %}
 <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
   {% for name, when in payoffs.items() %}
   <div class="card">
@@ -17,10 +59,40 @@
   {% endfor %}
 </div>
 
+{% if truncated %}
+<div class="alert alert-error" style="margin-bottom:16px">
+  <strong>⚠ Plan truncated at 10 years.</strong>
+  Debt won't be paid off in the projected window. Consider increasing budget,
+  switching to Avalanche strategy, or enabling prepayment on fixed loans.
+</div>
+{% endif %}
+
 <div class="section">
   <h3>Month-by-Month</h3>
   <table class="table-card">
-    <thead><tr><th>Month</th><th>Budget</th><th>Total Debt</th><th>Paid Off</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th>Budget</th>
+        <th>Total Debt</th>
+        <th>
+          <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+            Debt Down
+            <span class="tip-icon">i</span>
+            <span class="tip-body"><strong>Debt Down:</strong> Total debt reduced this month (interest paid + principal applied).</span>
+          </span>
+        </th>
+        <th>Attack Target</th>
+        <th>
+          <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+            Extra → Target
+            <span class="tip-icon">i</span>
+            <span class="tip-body"><strong>Extra → Target:</strong> Total amount allocated to the attack target this month (minimum due plus any surplus budget).</span>
+          </span>
+        </th>
+        <th>Paid Off</th>
+      </tr>
+    </thead>
     <tbody>
       {% for r in rows %}
       <tr>
@@ -29,10 +101,20 @@
         <td data-label="Total Debt" style="color:{% if r.total < 200000 %}#22c55e{% elif r.total < 500000 %}#eab308{% else %}#ef4444{% endif %}">
           {{ r.total | peso }}
         </td>
+        <td data-label="Debt Down" style="color:#22c55e;font-weight:600">
+          {% if (r.delta or 0) > 0 %}−{{ r.delta | peso }}{% else %}—{% endif %}
+        </td>
+        <td data-label="Attack Target" style="color:var(--text2)">
+          {% if r.attack_target %}{{ r.attack_target.split('(')[0].strip() }}{% else %}—{% endif %}
+        </td>
+        <td data-label="Extra → Target" style="color:#22c55e">
+          {% if r.attack_target and r.allocs %}{{ (r.allocs.get(r.attack_target, 0)) | peso }}{% else %}—{% endif %}
+        </td>
         <td data-label="Paid Off" style="color:#22c55e">{{ r.payoffs | join(', ') }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% endif %}
 {% endblock %}

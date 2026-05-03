@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..config import hash_password
-from .models import AiCache, Debt, MonthlyEntry, User
+from .models import AiCache, Debt, MonthlyEntry, Notification, NotificationRead, User
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -175,6 +175,60 @@ async def delete_entries_for_month(db: AsyncSession, user_id: int, month: str) -
     await db.commit()
 
 
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+async def create_notification(db: AsyncSession, title: str, body: str, created_by: int) -> Notification:
+    n = Notification(title=title, body=body, created_by=created_by)
+    db.add(n)
+    await db.commit()
+    await db.refresh(n)
+    return n
+
+
+async def get_active_notifications(db: AsyncSession) -> list[Notification]:
+    result = await db.execute(
+        select(Notification)
+        .where(Notification.is_active == True)
+        .options(selectinload(Notification.creator))
+        .order_by(Notification.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_notifications(db: AsyncSession) -> list[Notification]:
+    result = await db.execute(
+        select(Notification)
+        .options(selectinload(Notification.creator))
+        .order_by(Notification.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def deactivate_notification(db: AsyncSession, notification_id: int) -> None:
+    await db.execute(
+        update(Notification).where(Notification.id == notification_id).values(is_active=False)
+    )
+    await db.commit()
+
+
+async def get_unread_count(db: AsyncSession, user_id: int) -> int:
+    read_sub = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
+    result = await db.execute(
+        select(Notification).where(Notification.is_active == True, Notification.id.not_in(read_sub))
+    )
+    return len(result.scalars().all())
+
+
+async def mark_all_read(db: AsyncSession, user_id: int) -> None:
+    active = await get_active_notifications(db)
+    read_sub = select(NotificationRead.notification_id).where(NotificationRead.user_id == user_id)
+    already_read = {r for r in (await db.execute(read_sub)).scalars().all()}
+    for n in active:
+        if n.id not in already_read:
+            db.add(NotificationRead(user_id=user_id, notification_id=n.id))
+    await db.commit()
+
+
 # ── AI Cache ──────────────────────────────────────────────────────────────────
 
 async def get_ai_cache(db: AsyncSession, user_id: int) -> Optional[AiCache]:
@@ -186,17 +240,29 @@ async def set_ai_cache(
     db: AsyncSession, user_id: int, data_hash: str, html: str
 ) -> None:
     from datetime import date
+    today = date.today()
     cache = await get_ai_cache(db, user_id)
     if cache:
+        new_count = 1 if cache.generated_at != today else cache.daily_count + 1
         cache.data_hash = data_hash
         cache.html = html
-        cache.generated_at = date.today()
+        cache.generated_at = today
+        cache.daily_count = new_count
     else:
         cache = AiCache(
             user_id=user_id,
             data_hash=data_hash,
             html=html,
-            generated_at=date.today(),
+            generated_at=today,
+            daily_count=1,
         )
         db.add(cache)
     await db.commit()
+
+
+async def get_ai_daily_count(db: AsyncSession, user_id: int) -> int:
+    from datetime import date
+    cache = await get_ai_cache(db, user_id)
+    if not cache or cache.generated_at != date.today():
+        return 0
+    return cache.daily_count

@@ -12,17 +12,54 @@
     {% endfor %}
   </select>
   <a href="/edit/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem">✏️ Edit</a>
+  {% if viewing %}<a href="/report/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem" target="_blank">🖨️ Print Report</a>{% endif %}
 </div>
 
 <div class="grid">
   <div class="card"><div class="label">Total Debt</div><div class="value red">{{ total_now | peso }}</div></div>
   <div class="card"><div class="label">Credit Cards</div><div class="value yellow">{{ total_cc | peso }}</div></div>
   <div class="card"><div class="label">Interest / Month</div><div class="value red">{{ monthly_interest | peso }}</div></div>
-  <div class="card"><div class="label">Debt-Free Target</div><div class="value green">{{ debt_free }}</div></div>
-  <div class="card"><div class="label">Monthly Budget</div><div class="value blue">{{ budget_php | peso }}</div></div>
-  <div class="card"><div class="label">SAR→PHP Rate</div><div class="value">1 SAR = ₱{{ rate }}</div></div>
+  <div class="card"><div class="label">Debt-Free Target</div><div class="value {% if debt_free == '—' %}{% else %}green{% endif %}">{{ debt_free }}{% if debt_free == '—' %}<span style="font-size:.7rem;color:var(--muted);display:block;font-weight:400;margin-top:2px">add data to project</span>{% endif %}</div></div>
+  <div class="card">
+    <div class="label">Monthly Budget</div>
+    <div class="value blue">{{ budget_php | peso }}</div>
+    {% if ofw_mode %}<div style="font-size:.72rem;color:var(--faint);margin-top:6px">1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ rate }}</div>{% endif %}
+  </div>
 </div>
 
+{% if peak_debt > 0 %}
+<div class="section" style="padding:20px 24px">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+    <div>
+      <span style="font-weight:700;font-size:1rem">Payoff Progress</span>
+      <span style="color:var(--muted);font-size:.82rem;margin-left:8px">from peak {{ peak_debt | peso }}</span>
+    </div>
+    <div style="text-align:right">
+      <span style="font-size:1.4rem;font-weight:800;color:#22c55e">{{ pct_paid }}%</span>
+      <span style="color:var(--muted);font-size:.82rem;margin-left:6px">paid off &nbsp;·&nbsp; {{ paid_off | peso }} reduced</span>
+    </div>
+  </div>
+  <div style="background:var(--border);border-radius:99px;height:12px;overflow:hidden">
+    <div style="height:100%;width:{{ [pct_paid, 100] | min }}%;background:linear-gradient(90deg,#16a34a,#22c55e);border-radius:99px;transition:width .6s ease"></div>
+  </div>
+  {% if pct_paid >= 75 %}<p style="color:#22c55e;font-size:.8rem;margin-top:8px;font-weight:600">🎉 Almost there — keep going!</p>
+  {% elif pct_paid >= 50 %}<p style="color:#22c55e;font-size:.8rem;margin-top:8px;font-weight:600">💪 Halfway done — great progress!</p>
+  {% elif pct_paid >= 25 %}<p style="color:#f59e0b;font-size:.8rem;margin-top:8px;font-weight:600">📈 Good momentum — stay consistent!</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not hist_labels %}
+<div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
+  <div style="font-size:2.5rem;margin-bottom:12px">💳</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:8px">No data yet</p>
+  <p style="font-size:.875rem;margin-bottom:20px">Add your debts and record this month's balances to get started.</p>
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+    <a href="/debts" class="btn btn-primary">Set Up My Debts</a>
+    <a href="/add" class="btn btn-back">Add Monthly Snapshot</a>
+  </div>
+</div>
+{% else %}
 <div class="charts">
   <div class="chart-card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
@@ -50,10 +87,26 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="section" style="border:2px solid #854d0e">
   <h3 style="color:#fde68a">💰 {% if is_latest %}Pay This Month{% else %}Payment Plan — {{ viewing }}{% endif %} — Budget {{ budget_php | peso }}</h3>
-  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">Avalanche: minimums on all, everything extra → ATTACK card first.</p>
+  <p style="color:var(--muted);font-size:.8rem;margin-bottom:14px">
+    Strategy: <strong style="color:var(--text2)">{{ strategy.replace('_', ' ').title() if strategy else 'Avalanche' }}</strong>
+    <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+      <span class="tip-icon">i</span>
+      <span class="tip-body">
+        {% if strategy == 'snowball' %}<strong>Snowball strategy:</strong> Pay minimums on all debts, then send everything extra to the smallest-balance card first. Quick wins build momentum.
+        {% elif strategy == 'cash_flow' %}<strong>Cash Flow strategy:</strong> Pay minimums on all debts, then send everything extra to the highest-minimum-due card first. Frees up monthly cash faster.
+        {% else %}<strong>Avalanche strategy:</strong> Pay minimums on all debts, then send everything extra to the highest-APR card first. Saves the most interest over time.
+        {% endif %}
+      </span>
+    </span>
+    {% if strategy == 'snowball' %}— Pay smallest balance first. Quick wins for motivation.
+    {% elif strategy == 'cash_flow' %}— Pay highest minimum due first. Frees up monthly cash faster.
+    {% else %}— Pay highest APR rate first. Saves most interest.
+    {% endif %}
+  </p>
   <table class="table-card">
     <thead>
       <tr>
@@ -80,7 +133,24 @@
       {% set alloc = pay_alloc.get(n, 0) %}
       {% set extra = alloc - mn %}
       <tr>
-        <td data-label="#">{% if rank == 1 %}<span class="attack">ATTACK</span>{% else %}#{{ rank }}{% endif %}</td>
+        <td data-label="#">
+          {% if attack_target is defined and attack_target and n == attack_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="attack">ATTACK</span>
+              <span class="tip-body" style="left:auto;right:0">Surplus budget targets this debt first. Will be paid off fastest.</span>
+            </span>
+          {% elif next_target is defined and next_target and n == next_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="badge" style="background:#1e3a8a;color:#93c5fd">NEXT</span>
+              <span class="tip-body" style="left:auto;right:0">Becomes ATTACK target once current ATTACK debt is paid off.</span>
+            </span>
+          {% elif rank == 1 and not attack_target %}
+            <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+              <span class="attack">ATTACK</span>
+              <span class="tip-body" style="left:auto;right:0">Surplus budget targets this debt first. Will be paid off fastest.</span>
+            </span>
+          {% else %}#{{ rank }}{% endif %}
+        </td>
         <td data-label="Card">{{ n }}</td>
         <td data-label="Balance">{{ bal | peso }}</td>
         <td data-label="Min Due">{{ mn | peso }}</td>
@@ -200,7 +270,7 @@ function buildTrend(type) {
       plugins: { legend: { labels: { color: c.muted } } },
       scales: {
         x: { ticks: { color: c.tick, maxTicksLimit: 10 }, grid: { color: c.grid } },
-        y: { ticks: { color: c.tick, callback: v => '₱' + v.toLocaleString() }, grid: { color: c.grid } }
+        y: { ticks: { color: c.tick, callback: v => window.CURRENCY_SYMBOL + v.toLocaleString() }, grid: { color: c.grid } }
       }
     }
   });
@@ -227,7 +297,7 @@ function buildDonut(type) {
           : { position: 'bottom', labels: { color: c.muted, font: { size: 11 }, padding: 8 } }
       },
       ...(isBar ? { scales: {
-        x: { ticks: { color: c.tick, callback: v => '₱'+v.toLocaleString() }, grid: { color: c.grid } },
+        x: { ticks: { color: c.tick, callback: v => window.CURRENCY_SYMBOL+v.toLocaleString() }, grid: { color: c.grid } },
         y: { ticks: { color: c.tick } , grid: { color: c.grid } }
       }} : {})
     }
@@ -278,8 +348,18 @@ function loadAnalysis(force = false) {
         meta.innerHTML = 'Based on {{ latest }} balances'
           + (d.cached ? ' · <span style="color:#22c55e">cached</span>' : ' · <span style="color:#f59e0b">fresh from OpenAI</span>');
       } else {
-        el.innerHTML = '<p style="color:#f87171">' + (d.error || 'Unknown error') + '</p>';
-        meta.innerHTML = '';
+        const errP = document.createElement('p');
+        errP.style.color = '#f87171';
+        errP.textContent = d.error || 'Unknown error';
+        if (d.error_link) {
+          const a = document.createElement('a');
+          a.href = d.error_link.href;
+          a.textContent = ' ' + d.error_link.text;
+          a.style.color = '#818cf8';
+          errP.appendChild(a);
+        }
+        el.replaceChildren(errP);
+        meta.textContent = '';
       }
       btn.disabled = false; btn.textContent = '↺ Refresh';
     })
@@ -290,5 +370,97 @@ function loadAnalysis(force = false) {
 }
 loadAnalysis();
 {% endif %}
+
+// ── Confetti & Milestones ──────────────────────────────────────────────────
+const VIEWING_MONTH = {{ viewing | tojson }};
+const PCT_PAID      = {{ pct_paid }};
+const DONE_CARDS    = {{ status_rows | selectattr('done') | map(attribute='name') | list | tojson }};
+
+function launchConfetti(duration = 3000) {
+  const canvas = document.createElement('canvas');
+  Object.assign(canvas.style, {
+    position:'fixed',top:0,left:0,width:'100%',height:'100%',
+    pointerEvents:'none',zIndex:9999
+  });
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const pieces = Array.from({length: 120}, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * -canvas.height,
+    w: Math.random() * 10 + 5,
+    h: Math.random() * 5 + 3,
+    color: ['#6366f1','#22c55e','#f59e0b','#ec4899','#3b82f6','#14b8a6'][Math.floor(Math.random()*6)],
+    rot: Math.random() * 360,
+    vx: (Math.random() - 0.5) * 3,
+    vy: Math.random() * 4 + 2,
+    vr: (Math.random() - 0.5) * 6,
+  }));
+  const end = Date.now() + duration;
+  (function frame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if (p.y > canvas.height) { p.y = -20; p.x = Math.random() * canvas.width; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+    if (Date.now() < end) requestAnimationFrame(frame);
+    else canvas.remove();
+  })();
+}
+
+function showToast(msg, sub) {
+  const t = document.createElement('div');
+  Object.assign(t.style, {
+    position:'fixed',top:'24px',left:'50%',transform:'translateX(-50%)',
+    background:'#1e293b',border:'1px solid #22c55e',color:'#e2e8f0',
+    borderRadius:'12px',padding:'16px 24px',zIndex:10000,textAlign:'center',
+    boxShadow:'0 8px 32px rgba(0,0,0,.4)',maxWidth:'320px',width:'90%',
+    animation:'slideDown .4s ease'
+  });
+  t.innerHTML = `<div style="font-size:1.4rem;margin-bottom:4px">${msg}</div><div style="font-size:.85rem;color:#94a3b8">${sub}</div>`;
+  const style = document.createElement('style');
+  style.textContent = '@keyframes slideDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}';
+  document.head.appendChild(style);
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+(function checkMilestones() {
+  if (!VIEWING_MONTH) return;
+  const key = `dt_celebrated_${VIEWING_MONTH}`;
+  const celebrated = JSON.parse(localStorage.getItem(key) || '{}');
+
+  // Paid-off card
+  DONE_CARDS.forEach(name => {
+    const cKey = `done_${name}`;
+    if (!celebrated[cKey]) {
+      celebrated[cKey] = true;
+      launchConfetti(4000);
+      showToast('🎉 Card Paid Off!', `${name} is at ₱0 — amazing work!`);
+    }
+  });
+
+  // Progress milestones
+  [25, 50, 75, 100].forEach(milestone => {
+    const mKey = `pct_${milestone}`;
+    if (PCT_PAID >= milestone && !celebrated[mKey]) {
+      celebrated[mKey] = true;
+      launchConfetti(3500);
+      showToast(
+        milestone === 100 ? '🏆 DEBT FREE!' : `🎯 ${milestone}% Paid Off!`,
+        milestone === 100 ? 'You did it — incredible discipline!' : 'Keep going — you\'re crushing it!'
+      );
+    }
+  });
+
+  localStorage.setItem(key, JSON.stringify(celebrated));
+})();
 </script>
 {% endblock %}

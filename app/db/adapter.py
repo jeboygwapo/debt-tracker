@@ -8,6 +8,7 @@ def build_debts_dict(debts: list[Debt]) -> dict:
             "type": d.type,
             "apr_monthly_pct": d.apr_monthly_pct,
             "note": d.note or "",
+            "allow_prepayment": bool(d.allow_prepayment),
         }
         for d in debts
     }

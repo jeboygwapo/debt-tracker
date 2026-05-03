@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..csrf import validate_csrf
 from ..db.base import get_db
 from ..db.crud import create_debt, delete_debt, get_debt_by_id, get_debts, reorder_debts, update_debt
 from ..dependencies import NotAuthenticated, get_current_user
 from ..templating import templates
 
 router = APIRouter(prefix="/debts")
+
+VALID_DEBT_TYPES = {"credit_card", "personal_loan", "other"}
 
 
 def _redirect_login():
@@ -34,7 +37,7 @@ async def debts_list(
 
 
 @router.post("", response_class=HTMLResponse)
-async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
+async def debts_add(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -52,6 +55,15 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
         })
 
     debt_type = str(form.get("type", "credit_card"))
+    if debt_type not in VALID_DEBT_TYPES:
+        debts = await get_debts(db, user.id)
+        return templates.TemplateResponse(request, "debts.html", {
+            "active": "debts",
+            "debts": debts,
+            "msg": f"Invalid debt type '{debt_type}'.",
+            "msg_type": "error",
+        })
+
     apr = float(str(form.get("apr_monthly_pct", "0") or "0").replace(",", ""))
     note = str(form.get("note", "")).strip() or None
     is_fixed = form.get("is_fixed") == "1"
@@ -59,6 +71,9 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
     fixed_ends = str(form.get("fixed_ends", "")).strip() or None
     fixed_reduced_monthly = _float(form.get("fixed_reduced_monthly"))
     fixed_reduced_threshold = _float(form.get("fixed_reduced_threshold"))
+    allow_prepayment = (
+        form.get("allow_prepayment") == "1" and debt_type != "credit_card"
+    )
 
     existing = await get_debts(db, user.id)
     sort_order = max((d.sort_order for d in existing), default=-1) + 1
@@ -75,6 +90,7 @@ async def debts_add(request: Request, db: AsyncSession = Depends(get_db)):
         fixed_ends=fixed_ends,
         fixed_reduced_monthly=fixed_reduced_monthly,
         fixed_reduced_threshold=fixed_reduced_threshold,
+        allow_prepayment=allow_prepayment,
         sort_order=sort_order,
     )
     return RedirectResponse("/debts?msg=Debt+added.", status_code=303)
@@ -108,6 +124,7 @@ async def debt_edit_post(
     request: Request,
     debt_id: int,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
@@ -128,12 +145,24 @@ async def debt_edit_post(
             "msg_type": "error",
         })
 
+    edit_type = str(form.get("type", "credit_card"))
+    if edit_type not in VALID_DEBT_TYPES:
+        return templates.TemplateResponse(request, "edit_debt.html", {
+            "active": "debts",
+            "debt": debt,
+            "msg": f"Invalid debt type '{edit_type}'.",
+            "msg_type": "error",
+        })
+
     is_fixed = form.get("is_fixed") == "1"
+    allow_prepayment = (
+        form.get("allow_prepayment") == "1" and edit_type != "credit_card"
+    )
     await update_debt(
         db,
         debt,
         name=name,
-        type=str(form.get("type", "credit_card")),
+        type=edit_type,
         apr_monthly_pct=float(str(form.get("apr_monthly_pct", "0") or "0").replace(",", "")),
         note=str(form.get("note", "")).strip() or None,
         is_fixed=is_fixed,
@@ -141,6 +170,7 @@ async def debt_edit_post(
         fixed_ends=str(form.get("fixed_ends", "")).strip() or None,
         fixed_reduced_monthly=_float(form.get("fixed_reduced_monthly")) if is_fixed else None,
         fixed_reduced_threshold=_float(form.get("fixed_reduced_threshold")) if is_fixed else None,
+        allow_prepayment=allow_prepayment,
     )
     return RedirectResponse(f"/debts/{debt_id}/edit?msg=Saved.", status_code=303)
 
@@ -150,6 +180,7 @@ async def debt_delete(
     request: Request,
     debt_id: int,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
@@ -163,7 +194,7 @@ async def debt_delete(
 
 
 @router.post("/reorder")
-async def debts_reorder(request: Request, db: AsyncSession = Depends(get_db)):
+async def debts_reorder(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:

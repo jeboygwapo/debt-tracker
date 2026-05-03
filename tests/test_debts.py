@@ -1,4 +1,8 @@
+import re
+
 import pytest
+
+from tests.conftest import get_csrf_token
 
 
 @pytest.mark.anyio
@@ -10,36 +14,37 @@ async def test_debts_list(authed_client):
 
 @pytest.mark.anyio
 async def test_debt_add_and_delete(authed_client):
-    # Add
+    token = await get_csrf_token(authed_client, "/debts")
     r = await authed_client.post("/debts", data={
         "name": "Test Card DELETE ME",
         "type": "credit_card",
         "apr_monthly_pct": "2.5",
         "note": "pytest created",
+        "csrf_token": token,
     })
     assert r.status_code == 200
     assert "Test Card DELETE ME" in r.text
 
-    # Find ID — look backwards from debt name to nearest data-id (its own row)
-    import re
     idx = r.text.find("Test Card DELETE ME")
-    assert idx != -1, "Debt name not found in response"
+    assert idx != -1
     ids_before = re.findall(r'data-id="(\d+)"', r.text[:idx])
-    assert ids_before, "Could not find data-id before debt name"
+    assert ids_before
     debt_id = ids_before[-1]
 
-    # Delete
-    r2 = await authed_client.post(f"/debts/{debt_id}/delete")
+    token2 = await get_csrf_token(authed_client, "/debts")
+    r2 = await authed_client.post(f"/debts/{debt_id}/delete", data={"csrf_token": token2})
     assert r2.status_code == 200
     assert "Test Card DELETE ME" not in r2.text
 
 
 @pytest.mark.anyio
 async def test_debt_add_missing_name(authed_client):
+    token = await get_csrf_token(authed_client, "/debts")
     r = await authed_client.post("/debts", data={
         "name": "",
         "type": "credit_card",
         "apr_monthly_pct": "2.0",
+        "csrf_token": token,
     })
     assert r.status_code == 200
     assert "required" in r.text.lower() or "Name" in r.text
@@ -47,9 +52,7 @@ async def test_debt_add_missing_name(authed_client):
 
 @pytest.mark.anyio
 async def test_debt_edit_page(authed_client):
-    # Get first debt ID from list
     r = await authed_client.get("/debts")
-    import re
     match = re.search(r'/debts/(\d+)/edit', r.text)
     assert match
     debt_id = match.group(1)
@@ -62,12 +65,11 @@ async def test_debt_edit_page(authed_client):
 @pytest.mark.anyio
 async def test_debt_reorder(authed_client):
     r = await authed_client.get("/debts")
-    import re
     ids = re.findall(r'/debts/(\d+)/edit', r.text)
     assert len(ids) >= 2
-    # reverse order
     reversed_order = ",".join(reversed(ids))
-    r2 = await authed_client.post("/debts/reorder", data={"order": reversed_order})
+    token = await get_csrf_token(authed_client, "/debts")
+    r2 = await authed_client.post("/debts/reorder", data={"order": reversed_order, "csrf_token": token})
     assert r2.status_code == 200
 
 

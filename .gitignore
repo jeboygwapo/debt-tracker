@@ -18,6 +18,10 @@ venv/
 dist/
 build/
 
+# local backup exports
+backups/
+backup-out/
+
 # statements & personal docs
 statements*/
 *.pdf

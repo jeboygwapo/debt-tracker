@@ -1,48 +1,72 @@
 name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
     branches:
       - main
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      skip_e2e:
+        description: "Skip E2E gate (hotfix only)"
+        type: boolean
+        default: false
+      reason:
+        description: "Reason for manual deploy"
+        type: string
+        required: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FLY_APP: personal-debt-tracker
+  FLY_HOST: personal-debt-tracker.fly.dev
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
 
 jobs:
-  build-and-push:
+  fly-deploy:
+    name: Deploy to Fly.io
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    # Gate: CI must succeed for workflow_run, OR manual dispatch
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Print deploy context
+        run: |
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Skip E2E: ${{ inputs.skip_e2e || 'false' }}"
+          echo "Reason: ${{ inputs.reason || 'auto via CI success' }}"
+          echo "Commit: ${{ github.sha }}"
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,prefix=sha-
-            type=raw,value=latest
+      - name: Deploy
+        run: flyctl deploy --remote-only --app "$FLY_APP"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Post-deploy smoke
+        run: |
+          curl --retry 5 --retry-delay 5 --retry-connrefused \
+            --max-time 30 -fsS "https://${FLY_HOST}/api/healthz"
+          echo ""
+          echo "Health check passed. Deployment live."
+
+      - name: Rollback hint on failure
+        if: failure()
+        run: |
+          echo "::error::Deploy or smoke failed."
+          echo "Rollback options:"
+          echo "  1. flyctl releases list --app $FLY_APP"
+          echo "  2. flyctl releases rollback <version> --app $FLY_APP"
+          echo "  3. Or revert the bad commit on main and let CI/CD redeploy."
+          exit 1

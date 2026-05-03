@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, String, Text
+import sqlalchemy as sa
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -12,7 +13,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     income_config: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -38,6 +39,7 @@ class Debt(Base):
     fixed_ends: Mapped[Optional[str]] = mapped_column(String(7))        # YYYY-MM
     fixed_reduced_monthly: Mapped[Optional[float]] = mapped_column(Float)
     fixed_reduced_threshold: Mapped[Optional[float]] = mapped_column(Float)
+    allow_prepayment: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text('false'))
 
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -65,6 +67,31 @@ class MonthlyEntry(Base):
     debt: Mapped["Debt"] = relationship(back_populates="monthly_entries")
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(128), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    reads: Mapped[list["NotificationRead"]] = relationship(back_populates="notification", cascade="all, delete-orphan")
+    creator: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by])
+
+
+class NotificationRead(Base):
+    __tablename__ = "notification_reads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    notification: Mapped["Notification"] = relationship(back_populates="reads")
+
+
 class AiCache(Base):
     __tablename__ = "ai_cache"
 
@@ -72,5 +99,6 @@ class AiCache(Base):
     data_hash: Mapped[str] = mapped_column(String(32))
     html: Mapped[str] = mapped_column(Text)
     generated_at: Mapped[date] = mapped_column(Date)
+    daily_count: Mapped[int] = mapped_column(default=0)
 
     user: Mapped["User"] = relationship(back_populates="ai_cache")

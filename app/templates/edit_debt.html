@@ -12,6 +12,7 @@
 
 <div class="section">
   <form method="POST" action="/debts/{{ debt.id }}/edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div class="row">
       <div>
         <label>Name *</label>
@@ -19,7 +20,7 @@
       </div>
       <div>
         <label>Type</label>
-        <select name="type">
+        <select name="type" id="type-edit" onchange="togglePrepayVisibility('edit')">
           <option value="credit_card" {{ 'selected' if debt.type == 'credit_card' }}>Credit Card</option>
           <option value="personal_loan" {{ 'selected' if debt.type == 'personal_loan' }}>Personal Loan</option>
           <option value="other" {{ 'selected' if debt.type == 'other' }}>Other</option>
@@ -45,10 +46,22 @@
       </label>
     </div>
 
+    <div id="prepay-row-edit" style="margin:12px 0;display:{{ 'none' if debt.type == 'credit_card' else 'block' }}">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" name="allow_prepayment" value="1"
+               {% if debt.allow_prepayment %}checked{% endif %}>
+        <span style="font-size:.85rem;color:var(--text2)">Allow prepayment</span>
+        <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+          <span class="tip-icon">i</span>
+          <span class="tip-body"><strong>Allow prepayment:</strong> Enable if your bank accepts extra payments without penalty. When ON, surplus budget will pay down this loan early.</span>
+        </span>
+      </label>
+    </div>
+
     <div id="fixed-fields-edit" style="display:{{ 'block' if debt.is_fixed else 'none' }}">
       <div class="row">
         <div>
-          <label>Fixed Monthly Amount (₱)</label>
+          <label>Fixed Monthly Amount ({{ currency_symbol(request) }})</label>
           <input name="fixed_monthly" type="number" step="0.01" value="{{ debt.fixed_monthly or '' }}">
         </div>
         <div>
@@ -58,12 +71,12 @@
       </div>
       <div class="row">
         <div>
-          <label>Reduced Amount After Threshold (₱)</label>
-          <input name="fixed_reduced_monthly" type="number" step="0.01" value="{{ debt.fixed_reduced_monthly or '' }}">
+          <label>Reduced Payment When Balance Falls Below ({{ currency_symbol(request) }})</label>
+          <input name="fixed_reduced_monthly" type="number" step="0.01" value="{{ debt.fixed_reduced_monthly or '' }}" placeholder="e.g. 3000 — optional">
         </div>
         <div>
-          <label>Balance Threshold for Reduced Amount (₱)</label>
-          <input name="fixed_reduced_threshold" type="number" step="0.01" value="{{ debt.fixed_reduced_threshold or '' }}">
+          <label>Switch to Reduced Payment When Balance ≤ ({{ currency_symbol(request) }})</label>
+          <input name="fixed_reduced_threshold" type="number" step="0.01" value="{{ debt.fixed_reduced_threshold or '' }}" placeholder="e.g. 50000 — optional">
         </div>
       </div>
     </div>
@@ -89,6 +102,7 @@
     <input id="confirm-name-input" placeholder="{{ debt.name }}" style="max-width:300px;margin-bottom:10px">
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <form method="POST" action="/debts/{{ debt.id }}/delete" id="delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
         <button type="submit" id="confirm-delete-btn" class="btn" style="background:#b91c1c;color:#fff" disabled>
           Yes, Delete Permanently
         </button>
@@ -103,6 +117,13 @@ function toggleFixed(suffix) {
   const cb = document.getElementById('is-fixed-' + suffix);
   const fields = document.getElementById('fixed-fields-' + suffix);
   fields.style.display = cb.checked ? 'block' : 'none';
+}
+
+function togglePrepayVisibility(suffix) {
+  const sel = document.getElementById('type-' + suffix);
+  const row = document.getElementById('prepay-row-' + suffix);
+  if (!sel || !row) return;
+  row.style.display = sel.value === 'credit_card' ? 'none' : 'block';
 }
 
 function showDeleteConfirm() {

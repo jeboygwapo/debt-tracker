@@ -14,6 +14,7 @@
 <div id="add-form" style="display:none" class="section">
   <h3>New Debt</h3>
   <form method="POST" action="/debts">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <div class="row">
       <div>
         <label>Name *</label>
@@ -21,7 +22,7 @@
       </div>
       <div>
         <label>Type</label>
-        <select name="type">
+        <select name="type" id="type-add" onchange="togglePrepayVisibility('add')">
           <option value="credit_card">Credit Card</option>
           <option value="personal_loan">Personal Loan</option>
           <option value="other">Other</option>
@@ -46,10 +47,21 @@
       </label>
     </div>
 
+    <div id="prepay-row-add" style="margin:12px 0;display:none">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+        <input type="checkbox" name="allow_prepayment" value="1">
+        <span style="font-size:.85rem;color:var(--text2)">Allow prepayment</span>
+        <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+          <span class="tip-icon">i</span>
+          <span class="tip-body"><strong>Allow prepayment:</strong> Enable if your bank accepts extra payments without penalty. When ON, surplus budget will pay down this loan early.</span>
+        </span>
+      </label>
+    </div>
+
     <div id="fixed-fields-add" style="display:none">
       <div class="row">
         <div>
-          <label>Fixed Monthly Amount (₱)</label>
+          <label>Fixed Monthly Amount ({{ currency_symbol(request) }})</label>
           <input name="fixed_monthly" type="number" step="0.01" placeholder="5000">
         </div>
         <div>
@@ -59,12 +71,12 @@
       </div>
       <div class="row">
         <div>
-          <label>Reduced Amount After Threshold (₱)</label>
-          <input name="fixed_reduced_monthly" type="number" step="0.01" placeholder="optional">
+          <label>Reduced Payment When Balance Falls Below ({{ currency_symbol(request) }})</label>
+          <input name="fixed_reduced_monthly" type="number" step="0.01" placeholder="e.g. 3000 — optional">
         </div>
         <div>
-          <label>Balance Threshold for Reduced Amount (₱)</label>
-          <input name="fixed_reduced_threshold" type="number" step="0.01" placeholder="optional">
+          <label>Switch to Reduced Payment When Balance ≤ ({{ currency_symbol(request) }})</label>
+          <input name="fixed_reduced_threshold" type="number" step="0.01" placeholder="e.g. 50000 — optional">
         </div>
       </div>
     </div>
@@ -79,6 +91,7 @@
 <!-- Debt List -->
 {% if debts %}
 <form method="POST" action="/debts/reorder" id="reorder-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
   <input type="hidden" name="order" id="order-input" value="{{ debts | map(attribute='id') | join(',') }}">
 </form>
 
@@ -111,11 +124,14 @@
         {% else %}
           <span class="badge" style="background:var(--border);color:var(--text)">Other</span>
         {% endif %}
+        {% if d.type != 'credit_card' and d.allow_prepayment %}
+          <span class="badge" style="background:#065f46;color:#6ee7b7;font-size:.7rem;margin-left:4px">prepay ON</span>
+        {% endif %}
       </td>
       <td data-label="APR %/mo">{{ '%.2f' % d.apr_monthly_pct }}%</td>
       <td data-label="Fixed">
         {% if d.is_fixed %}
-          <span class="badge badge-green">₱{{ '{:,.0f}'.format(d.fixed_monthly or 0) }}/mo</span>
+          <span class="badge badge-green">{{ currency_symbol(request) }}{{ '{:,.0f}'.format(d.fixed_monthly or 0) }}/mo</span>
           {% if d.fixed_ends %}<span style="color:var(--muted);font-size:.75rem"> until {{ d.fixed_ends }}</span>{% endif %}
         {% else %}
           <span style="color:var(--faint)">—</span>
@@ -126,6 +142,7 @@
         <a href="/debts/{{ d.id }}/edit" class="qbtn qbtn-blue">Edit</a>
         <form method="POST" action="/debts/{{ d.id }}/delete" style="display:inline"
               onsubmit="return confirm('Delete {{ d.name }}? This removes ALL monthly entries for this debt.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
           <button type="submit" class="qbtn qbtn-red">Delete</button>
         </form>
       </td>
@@ -143,9 +160,11 @@
 </div>
 
 {% else %}
-<div class="section" style="text-align:center;padding:40px;color:var(--muted)">
-  <p style="font-size:1rem;margin-bottom:8px">No debts added yet.</p>
-  <p style="font-size:.85rem">Click <strong>+ Add Debt</strong> to add your first card or loan.</p>
+<div class="section" style="text-align:center;padding:48px 24px;color:var(--muted)">
+  <div style="font-size:2.5rem;margin-bottom:12px">💳</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:8px">No debts added yet</p>
+  <p style="font-size:.875rem;margin-bottom:20px">Add your credit cards and loans to start tracking balances and building a payoff plan.</p>
+  <button class="btn btn-primary" onclick="document.getElementById('add-form').style.display='block';this.closest('.section').style.display='none'">+ Add Your First Debt</button>
 </div>
 {% endif %}
 
@@ -155,6 +174,14 @@ function toggleFixed(suffix) {
   const fields = document.getElementById('fixed-fields-' + suffix);
   fields.style.display = cb.checked ? 'block' : 'none';
 }
+
+function togglePrepayVisibility(suffix) {
+  const sel = document.getElementById('type-' + suffix);
+  const row = document.getElementById('prepay-row-' + suffix);
+  if (!sel || !row) return;
+  row.style.display = sel.value === 'credit_card' ? 'none' : 'block';
+}
+togglePrepayVisibility('add');
 
 const _originalOrder = document.getElementById('order-input')?.value || '';
 

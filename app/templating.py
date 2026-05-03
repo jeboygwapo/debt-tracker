@@ -1,9 +1,34 @@
 import json
 from pathlib import Path
 
+import jinja2
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
+from .config import APP_VERSION
+from .csrf import get_csrf_token
+
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.filters["tojson"] = lambda v: Markup(json.dumps(v))
-templates.env.filters["peso"] = lambda v: f"₱{v:,.2f}"
+
+@jinja2.pass_context
+def _currency_filter(ctx, v):
+    request = ctx.get("request")
+    symbol = request.session.get("currency_symbol", "₱") if request else "₱"
+    return f"{symbol}{v:,.2f}"
+
+def _currency_symbol(request) -> str:
+    return request.session.get("currency_symbol", "₱")
+
+def _income_currency(request) -> str:
+    return request.session.get("income_currency", "SAR")
+
+def _ofw_mode(request) -> bool:
+    return request.session.get("ofw_mode", True)
+
+templates.env.filters["peso"] = _currency_filter
+templates.env.globals["csrf_token"] = get_csrf_token
+templates.env.globals["currency_symbol"] = _currency_symbol
+templates.env.globals["income_currency"] = _income_currency
+templates.env.globals["ofw_mode"] = _ofw_mode
+templates.env.globals["app_version"] = APP_VERSION

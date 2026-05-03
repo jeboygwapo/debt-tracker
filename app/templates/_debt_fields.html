@@ -4,12 +4,12 @@
   <div class="row">
     <div>
       <label>Balance (Statement Amount)</label>
-      <input name="d_{{ i }}_balance" id="bal_{{ i }}"
+      <input name="d_{{ i }}_balance" id="bal_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('balance', '') if e.get('balance') else '' }}" placeholder="0.00">
     </div>
     <div>
       <label>Minimum Due</label>
-      <input name="d_{{ i }}_min_due" id="mn_{{ i }}"
+      <input name="d_{{ i }}_min_due" id="mn_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('min_due', '') if e.get('min_due') else '' }}" placeholder="0.00">
     </div>
   </div>
@@ -42,19 +42,23 @@
     <div>
       <label>
         Payment Made
-        <button type="button" class="qbtn" onclick="copyMin({{ i }})">= Min</button>
-        <button type="button" class="qbtn" onclick="setField('d_{{ i }}_payment','0')">= 0</button>
+        <span class="quick-row">
+          <button type="button" class="qbtn" onclick="copyMin({{ i }})">= Min</button>
+          <button type="button" class="qbtn" onclick="setField('d_{{ i }}_payment','0')">= 0</button>
+        </span>
       </label>
-      <input name="d_{{ i }}_payment" id="pmt_{{ i }}"
+      <input name="d_{{ i }}_payment" id="pmt_{{ i }}" type="number" step="0.01" min="0"
              value="{{ e.get('payment', '') }}" placeholder="0.00">
     </div>
     <div>
       <label>
         Paid On
-        <button type="button" class="qbtn qbtn-green" onclick="setField('d_{{ i }}_paid_on','{{ today }}')">Today</button>
-        <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Good')">Good</button>
-        <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Ready')">Ready</button>
-        <button type="button" class="qbtn qbtn-red"   onclick="setField('d_{{ i }}_paid_on','')">Clear</button>
+        <span class="quick-row">
+          <button type="button" class="qbtn qbtn-green" onclick="setField('d_{{ i }}_paid_on','{{ today }}')">Today</button>
+          <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Good')">Good</button>
+          <button type="button" class="qbtn qbtn-blue"  onclick="setField('d_{{ i }}_paid_on','Ready')">Ready</button>
+          <button type="button" class="qbtn qbtn-red"   onclick="setField('d_{{ i }}_paid_on','')">Clear</button>
+        </span>
       </label>
       <input name="d_{{ i }}_paid_on" id="d_{{ i }}_paid_on"
              value="{{ e.get('paid_on', '') }}" placeholder="leave blank if unpaid">
@@ -98,12 +102,12 @@ function syncPaymentRefs() {
   document.querySelectorAll('[id^="bal_"]').forEach(el => {
     const i = el.id.split('_')[1];
     const ref = document.getElementById('ref_bal_' + i);
-    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+    if (ref && el.value) ref.textContent = window.CURRENCY_SYMBOL + parseFloat(el.value).toLocaleString(undefined, {minimumFractionDigits:2});
   });
   document.querySelectorAll('[id^="mn_"]').forEach(el => {
     const i = el.id.split('_')[1];
     const ref = document.getElementById('ref_mn_' + i);
-    if (ref && el.value) ref.textContent = '₱' + parseFloat(el.value).toLocaleString('en-PH', {minimumFractionDigits:2});
+    if (ref && el.value) ref.textContent = window.CURRENCY_SYMBOL + parseFloat(el.value).toLocaleString(undefined, {minimumFractionDigits:2});
   });
 }
 document.querySelectorAll('[id^="bal_"],[id^="mn_"]').forEach(el => el.addEventListener('input', syncPaymentRefs));

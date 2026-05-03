@@ -1,0 +1,55 @@
+name: Monthly DB Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # 2:00 AM UTC every Sunday
+  workflow_dispatch:        # allow manual run any time
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Start Fly Postgres proxy
+        run: flyctl proxy 5432:5432 -a jayvee-debt-tracker-db &
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for proxy to be ready
+        run: |
+          for i in $(seq 1 30); do
+            nc -z localhost 5432 && echo "Proxy ready after ${i}s" && break
+            echo "Waiting... (${i}s)"
+            sleep 1
+          done
+          nc -z localhost 5432 || (echo "Proxy never became ready" && exit 1)
+
+      - name: Export DB to CSV
+        run: python scripts/export_to_csv.py --out-dir ./backup-out
+        env:
+          DATABASE_URL: "postgresql+asyncpg://jayvee_debt_tracker:${{ secrets.DB_PASSWORD }}@localhost:5432/jayvee_debt_tracker"
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
+      - name: Upload backup as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: backup-out/
+          retention-days: 90

@@ -57,7 +57,10 @@ scripts/             # one-off admin/migration scripts
   "monthly_sar": 8000,
   "expenses_sar": 2000,
   "sar_to_php": 15.2,
-  "phone": { "monthly_sar": 200, "ends": "2026-07" }
+  "phone": { "monthly_sar": 200, "ends": "2026-07" },
+  "ofw_mode": true,
+  "currency_symbol": "₱",
+  "income_currency": "SAR"
 }
 ```
 
@@ -104,18 +107,57 @@ python -m pytest tests/ -v
 - `tests/conftest.py` — isolated SQLite test DB (`tests/test_debttracker.db`), auto-created and torn down
 - DB overridden via `os.environ["DATABASE_URL"]` before app import — must stay at top of conftest
 - Seed: 1 admin user + 3 debts per session
-- 25 tests: auth, pages, debts CRUD+reorder, admin user management
+- 105 unit+integration tests + 25 smoke + e2e (Playwright). Layers: unit, integration, smoke (`tests/smoke/`), e2e (`tests/e2e/`)
+- Markers: `@pytest.mark.smoke`, `@pytest.mark.e2e` registered in `pytest.ini`
+- Run unit+integration only: `python3 -m pytest tests/ -m "not e2e and not smoke" -v`
+- Run smoke: `python3 -m pytest tests/smoke/ -m smoke -v`
+- Run e2e: requires Docker; see `tests/README.md`
 - Test DB excluded from Claude context via `.claudeignore`
+- **Manual test guide:** `claude_projects/playbooks/TESTER.md` — run before every deploy/demo
+- **Pentest protocol:** `claude_projects/playbooks/pentest-protocol.md` + `scripts/pentest.py`
 
 ## Do Not Touch
 - `alembic/versions/` — never edit manually, generate with `alembic revision`
 - Session secret in `.env` (`SECRET_KEY`) — never log or expose
 
+## Security & Hardening
+- Login rate limit: `app/ratelimit.py` — 5 attempts/15min per IP, 15min lockout, in-memory dict + threading.Lock
+- Session: 8-hour `max_age`, `https_only=True` in production, `same_site=lax`
+- Request size: `RequestSizeLimitMiddleware` — 413 if `Content-Length > 1MB`
+- `/docs` disabled when `APP_ENV=production`
+- Sentry: optional, init via `SENTRY_DSN` env var in `create_app()`, silent if SDK missing
+
 ## Settings Actions (POST /settings, action= field)
+- `mode` — toggle `ofw_mode` bool in income_config + session
 - `rate` — update `sar_to_php` in income_config
 - `income` — update `monthly_sar`, `expenses_sar`, `phone.monthly_sar`, `phone.ends`
 - `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
 - `password` — verify current, enforce 12-char min, update hash
+- `strategy` — update `income_config["strategy"]` ∈ `{"avalanche", "snowball", "cash_flow"}`. Single source of truth; dashboard/remit/plan/report all read from here.
+
+## Plan Strategy (POST /plan/strategy)
+- CSRF-guarded. Validates strategy ∈ `VALID_STRATEGIES`. Persists to `income_config["strategy"]`. 303 redirect to `/plan`.
+- GET `/plan?strategy=X` is preview-only — no DB write (CSRF-safe).
+- 3 strategies: `avalanche` (highest APR rate first), `snowball` (smallest balance first), `cash_flow` (highest min_due first).
+
+## Planner (`app/services/planner.py`)
+- Constants: `EPSILON = 0.5`, `MIN_DUE_PCT = 0.05`, `MIN_DUE_FLOOR_PHP = 500.0`, `PLAN_HORIZON_MONTHS = 120`
+- `_snap(x)` — collapses sub-EPSILON floats to 0, rounds others to 2 dp. Use after every balance arithmetic write.
+- `_dynamic_min_due(stored_min, balance)` — `max(stored, balance * 5%, ₱500)`, capped at balance.
+- Interest order: payment FIRST, then accrue → `(bal - pay) * (1 + apr/100)`. NOT `bal * (1 + apr/100) - pay`.
+- Hybrid cascade: pay fixed loans → pay all CC min_dues → top CC attack + max-1 spillover → fixed-loan prepay (only if `Debt.allow_prepayment=True`).
+- `compute_plan` returns `(rows, payoffs, meta)`. `meta = {"truncated", "attack_target", "next_target"}`.
+- `allocate_budget` returns `(pay_alloc, cc_priority, attack_target, next_target)`.
+
+## Debt model — `allow_prepayment` field
+- `Debt.allow_prepayment: bool` (default False, `server_default=sa.text('false')` for Postgres compat).
+- Migration: `alembic/versions/2960f7c8dcc5_add_allow_prepayment_to_debts.py`.
+- Force-false for credit cards in `/debts` POST handlers (CC always accept extra anyway).
+- When True on a fixed loan, planner cascades surplus into it once all CCs are paid. When False, fixed loan only gets its contractual monthly amount.
+
+## Remit response — bonus fields
+- `remit_post` result dict carries `bonus_php = max(0, php - standard)` and `bonus_alloc_to = attack_target` for the green "🎯 Bonus +₱X → ATTACK [card]" callout in `remit.html`.
+- `standard` = full plan budget = `(monthly_sar - expenses_sar - phone_sar) * rate` (phone subtracted only when month ≤ phone.ends).
 
 ## DB Dialect Notes
 - `income_config` uses `sa.JSON` (not `JSONB`) — works SQLite + Postgres
@@ -141,7 +183,7 @@ python scripts/init_db.py
 
 ## CI/CD (GitHub Actions)
 - `.github/workflows/ci.yml` — pytest on every push/PR, all branches
-- `.github/workflows/cd.yml` — Docker build + push to GHCR on merge to main; tags: `sha-<sha>`, `latest`
+- `.github/workflows/cd.yml` — Docker build + push to GHCR on main merge; tags: `sha-<sha>`, `latest`
 - Health check: `GET /api/healthz` — DB ping, returns `{"status":"ok"}` or 503
 
 ## Registration
@@ -150,7 +192,7 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
-## Current State (as of 2026-04-30)
+## Current State (as of 2026-05-01)
 - Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
 - Income config fully editable in Settings (salary, expenses, phone installment)
@@ -159,6 +201,39 @@ python scripts/init_db.py
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 31 tests, isolated DB, pytest+httpx+anyio — run `python -m pytest tests/ -v`
+- Test suite: 105 unit+integration + 25 smoke + e2e (Playwright). Run all non-e2e: `python3 -m pytest tests/ -m "not e2e" -v`
+- Currency: user-selectable debt currency symbol stored in `income_config["currency_symbol"]` + session; set via Settings → Debt Currency; Jinja2 `currency_symbol(request)` global + `| peso` filter both read from session; defaults to ₱
+- OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
+- Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
+- Input validation: balance/min_due/payment fields have `type=number min=0` to block negatives
+- Login: shows real "Create Account" link when `allow_registration=True`, disabled Coming Soon button otherwise
+- Landing page: `/welcome` — public, unauthenticated entry point; authenticated users redirect to `/`; unauthenticated hits on `/` redirect to `/welcome` via `_redirect_login()`
+- Progress bar: dashboard shows `pct_paid`/`paid_off`/`peak_debt` — computed from `max(hist_totals)` vs `total_now`
+- Confetti: canvas-based, fires on card `done=True` and pct milestones 25/50/75/100; localStorage prevents re-trigger per month
+- PDF report: `GET /report/{month}` — clean print-ready HTML, no deps; "Print Report" button opens in new tab from dashboard
+- Theme persistence: inline `<script>` in `<head>` on all standalone pages (login, register, landing) applies localStorage theme before render — eliminates flash
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
-- Next: merge feature/multi-user-registration → develop → main
+- AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
+- asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
+- auto_stop_machines = 'suspend' (not 'stop') — ~1-2s resume vs ~8-10s cold boot
+- Data migrated from local SQLite → Fly.io Postgres via scripts/migrate_sqlite_to_pg.py
+
+## Deploy Target
+- Platform: Fly.io (`personal-debt-tracker.fly.dev`) — renamed from jayvee-debt-tracker
+- Region: Singapore (`sin`)
+- Postgres: Fly Unmanaged Postgres (`jayvee-debt-tracker-db`, DB name: `jayvee_debt_tracker`)
+- Config: `fly.toml` at project root
+- Secrets managed via `flyctl secrets set` (see `fly.env.example`)
+- App currently SCALED TO ZERO (intentional) — run `flyctl scale count 1 --app personal-debt-tracker` to restore
+
+## Settings Actions (POST /settings, action= field) — full list
+- `rate` — update `sar_to_php` in income_config
+- `income` — update `monthly_sar`, `expenses_sar`, `phone.monthly_sar`, `phone.ends`
+- `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
+- `password` — verify current, enforce 12-char min, update hash
+- `currency` — save `currency_symbol` to income_config + update `request.session["currency_symbol"]`
+- `mode` — toggle `ofw_mode` bool in income_config + session
+- `strategy` — persist `income_config["strategy"]` ∈ `{"avalanche", "snowball", "cash_flow"}`
+
+## Pending Work (next session)
+1. **Forgot password** — lowest priority, contact admin covers it for now

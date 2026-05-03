@@ -5,13 +5,35 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  schedule:
+    # Nightly read-only smoke against prod (18:00 UTC = 02:00 SGT)
+    # Skips automatically when app is scaled to 0 (curl will fail, job marked failure)
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      run_e2e:
+        description: "Run E2E tests"
+        type: boolean
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PYTHON_VERSION: "3.13"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
+  # ---------------------------------------------------------------------------
+  # Unit + integration tests — fast, no external services
+  # Existing tests in tests/test_*.py
+  # Target: <30s
+  # ---------------------------------------------------------------------------
+  unit-integration:
+    name: Unit + Integration
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
 
     steps:
       - uses: actions/checkout@v4
@@ -19,13 +41,264 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: "pip"
+          cache-dependency-path: requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run tests
-        run: python -m pytest tests/ -v
+      - name: Run unit + integration tests
+        run: |
+          python3 -m pytest tests/ \
+            -m "not smoke and not e2e" \
+            -v \
+            --junit-xml=unit-integration-results.xml
         env:
           SECRET_KEY: ci-test-secret-key-not-for-prod
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-integration-results
+          path: unit-integration-results.xml
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Smoke tests — ASGITransport, no Docker, no external network
+  # Test Auto Engineer owns: tests/smoke/ + smoke marker in pytest.ini
+  # Target: <60s
+  # ---------------------------------------------------------------------------
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # TODO: Test Auto Engineer must create tests/smoke/ + register smoke marker in pytest.ini
+      # before this job will collect any tests. Until then it will exit with "no tests collected".
+      - name: Run smoke tests
+        run: |
+          python3 -m pytest tests/smoke/ \
+            -m smoke \
+            -v \
+            --junit-xml=smoke-results.xml
+        env:
+          SECRET_KEY: ci-test-secret-key-not-for-prod
+          SMOKE_ADMIN_USER: smokeadmin
+          SMOKE_ADMIN_PASS: SmokePassword123!
+          ALLOW_REGISTRATION: "false"
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: smoke-results.xml
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # E2E tests — Playwright + Postgres via docker compose
+  # Test Auto Engineer owns: tests/e2e/ + tests/e2e/docker-compose.test.yml
+  # Target: <5 min including container boot
+  # ---------------------------------------------------------------------------
+  e2e-ephemeral:
+    name: E2E (Ephemeral)
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'schedule' &&
+      (github.event_name != 'workflow_dispatch' || inputs.run_e2e)
+    timeout-minutes: 15
+
+    env:
+      COMPOSE_FILE: tests/e2e/docker-compose.test.yml
+      CI_ADMIN_USER: e2eadmin
+      CI_ADMIN_PASS: E2EPassword123!
+      SECRET_KEY: ci-test-secret-key-not-for-prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        # TODO: Test Auto Engineer to confirm playwright is in requirements.txt
+        # If not, this fails — they'll add it during their parallel work.
+        run: python3 -m playwright install --with-deps chromium
+        continue-on-error: false
+
+      # TODO: Test Auto Engineer to provide tests/e2e/docker-compose.test.yml
+      # before this job will function. Stack must expose app on a known port.
+      - name: Build and start ephemeral stack
+        run: |
+          if [ ! -f "$COMPOSE_FILE" ]; then
+            echo "::error::$COMPOSE_FILE not found — Test Auto Engineer to provide it."
+            exit 1
+          fi
+          docker compose -f "$COMPOSE_FILE" up -d --build
+
+      - name: Wait for app healthcheck
+        run: |
+          # 60 attempts × 2s = 2 min max wait
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5050/api/healthz > /dev/null 2>&1; then
+              echo "App healthy after ${i} attempts"
+              exit 0
+            fi
+            echo "Waiting for app... (${i}/60)"
+            sleep 2
+          done
+          echo "::error::App never became healthy"
+          docker compose -f "$COMPOSE_FILE" ps
+          docker compose -f "$COMPOSE_FILE" logs
+          exit 1
+
+      - name: Seed admin user
+        # TODO: Test Auto Engineer to confirm container service name and that
+        # init_db.py supports non-interactive mode via env vars (CI_ADMIN_USER/CI_ADMIN_PASS)
+        # init_db.py is currently interactive — they need to either patch it or
+        # provide an alt seeding script invoked here.
+        run: |
+          docker compose -f "$COMPOSE_FILE" exec -T \
+            -e CI_ADMIN_USER="$CI_ADMIN_USER" \
+            -e CI_ADMIN_PASS="$CI_ADMIN_PASS" \
+            app python scripts/init_db.py
+
+      - name: Run E2E tests
+        run: |
+          python3 -m pytest tests/e2e/ \
+            -m e2e \
+            -v \
+            --junit-xml=e2e-results.xml
+        env:
+          E2E_BASE_URL: http://localhost:5050
+          E2E_ADMIN_USER: ${{ env.CI_ADMIN_USER }}
+          E2E_ADMIN_PASS: ${{ env.CI_ADMIN_PASS }}
+
+      - name: Capture container logs on failure
+        if: failure()
+        run: |
+          docker compose -f "$COMPOSE_FILE" logs > docker-logs.txt 2>&1 || true
+          docker compose -f "$COMPOSE_FILE" ps >> docker-logs.txt 2>&1 || true
+
+      - name: Upload E2E results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: e2e-results.xml
+          retention-days: 14
+
+      - name: Upload Playwright traces and logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            test-results/
+            playwright-report/
+            docker-logs.txt
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
+
+  # ---------------------------------------------------------------------------
+  # Build prod image — only on push to main, after all test jobs pass
+  # Pushes to GHCR with sha + latest tags. CD workflow consumes this.
+  # ---------------------------------------------------------------------------
+  build-image:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [unit-integration, smoke, e2e-ephemeral]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # Nightly read-only smoke against prod
+  # Hits public health + landing endpoints only. No auth, no writes.
+  # Skips gracefully if app is scaled to 0 (job will fail and notify).
+  # ---------------------------------------------------------------------------
+  nightly-prod-smoke:
+    name: Nightly Prod Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+
+    steps:
+      - name: Probe public read-only endpoints
+        run: |
+          BASE="https://personal-debt-tracker.fly.dev"
+          for path in /api/healthz /welcome /login; do
+            echo "Probing ${BASE}${path}"
+            curl --retry 3 --retry-delay 5 --retry-connrefused \
+              --max-time 30 -fsS "${BASE}${path}" > /dev/null
+          done
+          echo "All read-only endpoints responsive."

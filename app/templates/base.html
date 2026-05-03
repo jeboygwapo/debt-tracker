@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jayvee — Debt Tracker</title>
+<script>document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark';</script>
+<script>
+window.CURRENCY_SYMBOL = "{{ currency_symbol(request) }}";
+window.INCOME_CURRENCY = "{{ income_currency(request) }}";
+</script>
 <script src="/static/chart.min.js"></script>
 <style>
 :root {
@@ -46,6 +51,15 @@ nav .brand{font-weight:700;color:var(--text);font-size:1rem;white-space:nowrap}
 .nav-links{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 .theme-btn{background:none;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.85rem;transition:.15s;margin-left:4px}
 .theme-btn:hover{background:var(--border)}
+.avatar-btn{background:none;border:1px solid var(--border);color:var(--text);border-radius:999px;width:32px;height:32px;cursor:pointer;font-size:.85rem;font-weight:700;transition:.15s;display:flex;align-items:center;justify-content:center;position:relative;margin-left:4px}
+.avatar-btn:hover{background:var(--border)}
+.avatar-notif{position:absolute;top:-2px;right:-2px;background:#ef4444;color:#fff;border-radius:999px;font-size:.5rem;font-weight:700;padding:1px 4px;min-width:14px;text-align:center;line-height:1.5;display:none}
+.avatar-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.3);z-index:200;display:none;flex-direction:column;gap:2px}
+.avatar-menu.open{display:flex}
+.avatar-menu a,.avatar-menu button{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;font-size:.85rem;color:var(--text2);text-decoration:none;background:none;border:none;cursor:pointer;width:100%;text-align:left;transition:.15s}
+.avatar-menu a:hover,.avatar-menu button:hover{background:var(--border);color:var(--text)}
+.avatar-menu .menu-divider{height:1px;background:var(--border);margin:4px 0}
+.avatar-wrapper{position:relative}
 
 .page{padding:24px 20px;max-width:1100px;margin:0 auto}
 h2{font-size:1.3rem;font-weight:700;margin-bottom:20px}
@@ -70,9 +84,10 @@ tr:hover td{background:var(--hover)}
 .attack{background:#854d0e;color:#fde68a;padding:3px 10px;border-radius:999px;font-weight:700;font-size:.75rem}
 form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
 label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:4px}
-input,select{width:100%;padding:9px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem}
-input:focus,select:focus{outline:none;border-color:#3b82f6}
-input:disabled{color:var(--muted)}
+input:not([type=checkbox]):not([type=radio]),select{width:100%;padding:9px 12px;background:var(--inp);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.9rem}
+input:not([type=checkbox]):not([type=radio]):focus,select:focus{outline:none;border-color:#3b82f6}
+input:not([type=checkbox]):not([type=radio]):disabled{color:var(--muted)}
+input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3b82f6}
 .btn{padding:10px 20px;border-radius:8px;border:none;font-size:.9rem;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
 .btn-primary{background:#3b82f6;color:#fff}.btn-primary:hover{background:#2563eb}
 .btn-success{background:#16a34a;color:#fff}.btn-success:hover{background:#15803d}
@@ -88,6 +103,8 @@ input:disabled{color:var(--muted)}
 .tab-active{background:#3b82f6!important;color:#fff!important}
 .qbtn{padding:1px 7px;border-radius:999px;border:none;font-size:.7rem;font-weight:600;cursor:pointer;margin-left:4px;vertical-align:middle;background:var(--border);color:var(--muted)}
 .qbtn:hover{background:var(--border2);color:var(--text)}
+.quick-row{display:inline-flex;flex-wrap:wrap;gap:4px;margin-left:4px;vertical-align:middle}
+.quick-row .qbtn{margin-left:0}
 .qbtn-green{background:#166534;color:#86efac}.qbtn-green:hover{background:#15803d;color:#fff}
 .qbtn-blue{background:#1d4ed8;color:#bfdbfe}.qbtn-blue:hover{background:#2563eb;color:#fff}
 .qbtn-red{background:#7f1d1d;color:#fca5a5}.qbtn-red:hover{background:#991b1b;color:#fff}
@@ -95,6 +112,18 @@ input:disabled{color:var(--muted)}
 .chart-toggle button{padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);font-size:.72rem;font-weight:600;cursor:pointer;transition:.15s}
 .chart-toggle button:hover{background:var(--border);color:var(--text)}
 .chart-toggle button.active{background:#3b82f6;border-color:#3b82f6;color:#fff}
+
+/* ── Tooltips ── */
+.tip{position:relative;display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+.tip-icon{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--border);color:var(--text2);font-size:.65rem;font-weight:700;text-align:center;line-height:14px;cursor:help;user-select:none;font-family:Georgia,serif;font-style:italic}
+.tip-icon:hover,.tip:focus .tip-icon{background:var(--text2);color:var(--bg)}
+.tip-body{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:.75rem;color:var(--text2);width:max-content;max-width:240px;box-shadow:0 4px 12px rgba(0,0,0,.3);line-height:1.4;font-weight:400;text-transform:none;letter-spacing:0;white-space:normal}
+.tip:hover .tip-body,.tip:focus .tip-body,.tip.active .tip-body{display:block}
+.tip-body strong{color:var(--text)}
+.tip-right .tip-body{left:auto;right:0}
+@media(max-width:640px){
+  .tip-body{max-width:200px;font-size:.72rem}
+}
 
 /* ── Mobile responsive tables ── */
 @media(max-width:640px){
@@ -116,6 +145,7 @@ input:disabled{color:var(--muted)}
   .nav-links.open{display:flex}
   .nav-links a,.nav-links .theme-btn{width:100%;text-align:left}
   .nav-spacer{display:none}
+  .avatar-menu{right:auto;left:0}
   .charts{grid-template-columns:1fr}
   .grid{grid-template-columns:repeat(2,1fr)}
   .page{padding:16px 14px}
@@ -123,6 +153,10 @@ input:disabled{color:var(--muted)}
 }
 @media(max-width:360px){
   .grid{grid-template-columns:1fr}
+}
+@media (max-width: 480px) {
+  .quick-row{display:flex;flex-direction:column;align-items:stretch;margin-left:0;margin-top:6px;gap:6px}
+  .quick-row .qbtn{width:100%;text-align:center;padding:6px 8px;margin-left:0}
 }
 </style>
 </head>
@@ -136,26 +170,74 @@ input:disabled{color:var(--muted)}
     <a href="/debts" class="{{ 'active' if active=='debts' else '' }}">My Cards</a>
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
-    <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">Settings</a>
-    <span class="nav-spacer"></span>
-    {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">Admin</a>{% endif %}
-    <a href="/logout" style="color:#f87171">Logout</a>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+    {% if request.session.get('user_id') %}
+    <div class="avatar-wrapper">
+      <button class="avatar-btn" id="avatar-btn" onclick="toggleAvatarMenu()" title="Menu">
+        {{ request.session.get('username', 'U')[0].upper() }}
+        <span class="avatar-notif" id="notif-badge">0</span>
+      </button>
+      <div class="avatar-menu" id="avatar-menu">
+        <a href="/notifications" class="{{ 'active' if active=='notifications' else '' }}">🔔 Notifications <span id="notif-count" style="margin-left:auto;background:#ef4444;color:#fff;border-radius:999px;font-size:.6rem;font-weight:700;padding:1px 6px;display:none">0</span></a>
+        <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">⚙️ Settings</a>
+        {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">👑 Admin</a>{% endif %}
+        <div class="menu-divider"></div>
+        <button onclick="toggleTheme()" id="theme-btn">🌙 Toggle Theme</button>
+        <a href="/logout" style="color:#f87171">🚪 Logout</a>
+      </div>
+    </div>
+    {% else %}
+    <a href="/login">Login</a>
+    {% endif %}
   </div>
 </nav>
 <div class="page">
 {% block content %}{% endblock %}
 </div>
+<footer style="text-align:center;padding:16px;color:var(--faint);font-size:.7rem">v{{ app_version }}</footer>
 <script>
 function toggleNav() {
   document.getElementById('nav-links').classList.toggle('open');
 }
+function toggleAvatarMenu() {
+  document.getElementById('avatar-menu').classList.toggle('open');
+}
+document.addEventListener('click', function(e) {
+  const wrapper = document.getElementById('avatar-btn');
+  const menu = document.getElementById('avatar-menu');
+  if (menu && wrapper && !wrapper.contains(e.target) && !menu.contains(e.target)) {
+    menu.classList.remove('open');
+  }
+  document.querySelectorAll('.tip.active').forEach(t => {
+    if (!t.contains(e.target)) t.classList.remove('active');
+  });
+});
+(function pollNotifications() {
+  const badge = document.getElementById('notif-badge');
+  const count = document.getElementById('notif-count');
+  if (!badge) return;
+  function check() {
+    fetch('/api/notifications/unread').then(r => r.json()).then(d => {
+      if (d.count > 0) {
+        badge.textContent = d.count;
+        badge.style.display = 'inline';
+        if (count) { count.textContent = d.count; count.style.display = 'inline'; }
+      } else {
+        badge.style.display = 'none';
+        if (count) count.style.display = 'none';
+      }
+    }).catch(() => {});
+  }
+  check();
+  setInterval(check, 60000);
+})();
 function toggleTheme() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';
   html.dataset.theme = isDark ? 'light' : 'dark';
   document.getElementById('theme-btn').textContent = isDark ? '☀️' : '🌙';
   localStorage.setItem('theme', html.dataset.theme);
+  if (typeof buildTrend === 'function') buildTrend(localStorage.getItem('trendType') || 'line');
+  if (typeof buildDonut === 'function') buildDonut(localStorage.getItem('donutType') || 'doughnut');
 }
 (function() {
   const saved = localStorage.getItem('theme') || 'dark';

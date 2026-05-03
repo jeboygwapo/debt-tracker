@@ -3,6 +3,8 @@ from pathlib import Path
 
 import bcrypt
 
+APP_VERSION = "0.1.0"
+
 
 def load_env_file(env_path: Path) -> None:
     if not env_path.exists():
@@ -61,7 +63,10 @@ class Settings:
 
     @property
     def secret_key(self) -> str:
-        return os.environ.get("SECRET_KEY", "dev-secret-change-me")
+        key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+        if os.environ.get("APP_ENV", "development").lower() == "production" and key == "dev-secret-change-me":
+            raise RuntimeError("SECRET_KEY must be set in production (APP_ENV=production)")
+        return key
 
     @property
     def app_user(self) -> str:
@@ -74,11 +79,23 @@ class Settings:
     @property
     def database_url(self) -> str:
         default = f"sqlite+aiosqlite:///{self.data_dir / 'debttracker.db'}"
-        return os.environ.get("DATABASE_URL", default)
+        url = os.environ.get("DATABASE_URL", default)
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if "asyncpg" in url and "sslmode=" in url:
+            from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+            parsed = urlparse(url)
+            params = {k: v for k, v in parse_qs(parsed.query).items() if k != "sslmode"}
+            url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+        return url
 
     @property
     def openai_api_key(self) -> str:
         return os.environ.get("OPENAI_API_KEY", "")
+
+    @property
+    def ai_daily_limit(self) -> int:
+        return int(os.environ.get("AI_DAILY_LIMIT", 3))
 
     @property
     def allow_registration(self) -> bool:

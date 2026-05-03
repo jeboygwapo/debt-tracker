@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Debt Tracker — Login</title>
+<script>document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark';</script>
 <style>
 :root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--inp:#0f172a}
 [data-theme="light"]{--bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--inp:#f8fafc}
@@ -26,6 +27,7 @@ button:hover{background:#4f46e5}
   <h2>💳 Debt Tracker</h2>
   {% if error %}<p class="err">{{ error }}</p>{% endif %}
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <label>Username</label>
     <input name="username" type="text" autofocus autocomplete="username">
     <label>Password</label>
@@ -33,9 +35,19 @@ button:hover{background:#4f46e5}
     <button type="submit">Sign In</button>
   </form>
   {% if allow_registration %}
-  <p style="text-align:center;margin-top:1.2rem;font-size:.85rem;color:var(--muted)">
-    No account? <a href="/register" style="color:#6366f1;text-decoration:none">Register</a>
-  </p>
+  <a href="/register" style="display:block;margin-top:1rem;width:100%;padding:.75rem;background:transparent;color:#6366f1;border:1px solid #6366f1;border-radius:8px;font-size:1rem;font-weight:600;text-align:center;text-decoration:none">
+    Create Account
+  </a>
+  {% else %}
+  <div style="margin-top:1rem;position:relative">
+    <button type="button" disabled
+      style="width:100%;padding:.75rem;background:#1e293b;color:#475569;border:1px dashed #334155;border-radius:8px;font-size:1rem;font-weight:600;cursor:not-allowed">
+      Sign Up
+    </button>
+    <span style="position:absolute;top:-10px;right:12px;background:#854d0e;color:#fde68a;font-size:.65rem;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.05em;text-transform:uppercase">
+      Coming Soon
+    </span>
+  </div>
   {% endif %}
 </div>
 <script>

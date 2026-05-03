@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from app.db.crud import create_debt, create_user
 
 def _run_migrations():
     result = subprocess.run(
-        ["python", "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -70,6 +71,13 @@ async def client(app):
         yield ac
 
 
+async def get_csrf_token(client, url="/login") -> str:
+    r = await client.get(url)
+    m = re.search(r'name="csrf_token"\s+value="([^"]+)"', r.text)
+    assert m, f"No CSRF token in {url}"
+    return m.group(1)
+
+
 @pytest.fixture
 async def authed_client(app):
     async with AsyncClient(
@@ -77,5 +85,6 @@ async def authed_client(app):
         base_url="http://test",
         follow_redirects=True,
     ) as ac:
-        await ac.post("/login", data={"username": TEST_USER, "password": TEST_PASS})
+        token = await get_csrf_token(ac, "/login")
+        await ac.post("/login", data={"username": TEST_USER, "password": TEST_PASS, "csrf_token": token})
         yield ac

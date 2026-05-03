@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
@@ -21,6 +21,7 @@ from ..db.crud import (
     upsert_entry,
 )
 from ..db.models import User
+from ..csrf import validate_csrf
 from ..dependencies import NotAuthenticated, get_current_user
 from ..services.planner import allocate_budget, compute_plan, latest_month
 from ..templating import templates
@@ -30,8 +31,31 @@ router = APIRouter()
 _PALETTE = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#f43f5e"]
 
 
+def _parse_entries_from_form(form, debts: list) -> list[dict]:
+    entries = []
+    for i, debt in enumerate(debts):
+        prefix = f"d_{i}_"
+        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
+        if not bal_s:
+            continue
+        try:
+            entries.append({
+                "debt_id": debt.id,
+                "balance": float(bal_s),
+                "min_due": float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
+                "payment": float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
+                "due_date": str(form.get(f"{prefix}due_date", "")).strip() or None,
+                "paid_on": str(form.get(f"{prefix}paid_on", "")).strip() or None,
+                "note": str(form.get(f"{prefix}note", "")).strip() or None,
+            })
+        except ValueError:
+            continue
+    return entries
+
+
+
 def _redirect_login():
-    return RedirectResponse("/login", status_code=302)
+    return RedirectResponse("/welcome", status_code=302)
 
 
 async def _load_user_data(db: AsyncSession, user: User) -> dict:
@@ -62,11 +86,13 @@ async def dashboard(
     cfg = data.get("income_config", {})
     fixed_pmts = data.get("fixed_payments", {})
 
-    sar_php = cfg.get("sar_to_php", 15.0)
+    ofw_mode = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
     phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
     phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-    budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * sar_php
+    budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * rate
+    strategy = cfg.get("strategy", "avalanche")
 
     total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
     total_cc = sum(
@@ -86,10 +112,14 @@ async def dashboard(
         for m in months_sorted
     ]
 
-    plan_rows, _ = compute_plan(data)
+    plan_rows, _, plan_meta = compute_plan(data, strategy)
     proj_labels = [r["month"] for r in plan_rows]
     proj_totals = [round(r["total"], 2) for r in plan_rows]
-    debt_free = plan_rows[-1]["month"] if plan_rows else "—"
+    debt_free = plan_rows[-1]["month"] if plan_rows and not plan_meta["truncated"] else "—"
+
+    peak_debt = max(hist_totals) if hist_totals else 0
+    paid_off = max(0, peak_debt - total_now)
+    pct_paid = round((paid_off / peak_debt * 100), 1) if peak_debt > 0 else 0
 
     donut_labels, donut_values, donut_colors = [], [], []
     for i, (name, e) in enumerate(entries.items()):
@@ -99,7 +129,7 @@ async def dashboard(
             donut_values.append(round(bal, 2))
             donut_colors.append(_PALETTE[i % len(_PALETTE)])
 
-    pay_alloc, cc_priority = allocate_budget(entries, data, budget_php)
+    pay_alloc, cc_priority, attack_target, next_target = allocate_budget(entries, data, budget_php, strategy)
 
     status_rows = [
         {
@@ -135,7 +165,6 @@ async def dashboard(
         "monthly_interest": monthly_interest,
         "debt_free": debt_free,
         "budget_php": budget_php,
-        "rate": sar_php,
         "hist_labels": hist_labels,
         "hist_totals": hist_totals,
         "proj_labels": proj_labels,
@@ -147,6 +176,15 @@ async def dashboard(
         "today": date.today(),
         "has_ai": bool(settings.openai_api_key),
         "username": user.username,
+        "ofw_mode": ofw_mode,
+        "rate": rate,
+        "peak_debt": peak_debt,
+        "paid_off": paid_off,
+        "pct_paid": pct_paid,
+        "attack_target": attack_target,
+        "next_target": next_target,
+        "truncated": plan_meta["truncated"],
+        "strategy": strategy,
     })
 
 
@@ -155,6 +193,8 @@ async def add_month_get(
     request: Request,
     msg: Optional[str] = None,
     saved: Optional[str] = None,
+    updated: Optional[str] = None,
+    month: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -167,16 +207,24 @@ async def add_month_get(
     prev = data["months"].get(latest, {})
     debt_names = list(data["debts"].keys())
 
+    if updated and month:
+        saved = month
+        msg = f"⚠ {month} already existed — data updated."
+
     summary = None
     if saved and saved in data["months"]:
         cfg = data.get("income_config", {})
-        sar_php = cfg.get("sar_to_php", 15.0)
+        _ofw = cfg.get("ofw_mode", True)
+        _rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
         phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
         phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
         base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-        budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * sar_php
+        budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * _rate
         saved_entries = data["months"][saved]
-        pay_alloc, cc_priority = allocate_budget(saved_entries, data, budget_php)
+        strategy = cfg.get("strategy", "avalanche")
+        pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+            saved_entries, data, budget_php, strategy
+        )
         total_due = sum(pay_alloc.values())
         summary = {
             "month": saved,
@@ -184,6 +232,8 @@ async def add_month_get(
             "total_due": total_due,
             "pay_alloc": pay_alloc,
             "cc_priority": cc_priority,
+            "attack_target": attack_target,
+            "next_target": next_target,
             "fixed_pmts": data.get("fixed_payments", {}),
             "entries": saved_entries,
         }
@@ -199,7 +249,7 @@ async def add_month_get(
 
 
 @router.post("/add")
-async def add_month_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def add_month_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -218,28 +268,24 @@ async def add_month_post(request: Request, db: AsyncSession = Depends(get_db)):
             "prev": {}, "summary": None, "today": date.today().isoformat(),
         })
 
-    for i, debt in enumerate(debts):
-        prefix = f"d_{i}_"
-        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
-        if not bal_s:
-            continue
-        try:
-            await upsert_entry(
-                db,
-                user_id=user.id,
-                debt_id=debt.id,
-                month=month,
-                balance=float(bal_s),
-                min_due=float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
-                payment=float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
-                due_date=str(form.get(f"{prefix}due_date", "")).strip() or None,
-                paid_on=str(form.get(f"{prefix}paid_on", "")).strip() or None,
-                note=str(form.get(f"{prefix}note", "")).strip() or None,
-            )
-        except ValueError:
-            continue
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return templates.TemplateResponse(request, "add_month.html", {
+            "active": "add",
+            "debt_names": list(name_to_id.keys()),
+            "msg": "Invalid month format. Use YYYY-MM.",
+            "prev": {}, "summary": None, "today": date.today().isoformat(),
+        })
 
-    return RedirectResponse(f"/add?saved={month}", status_code=303)
+    existing_months = await get_months(db, user.id)
+    is_update = month in existing_months
+
+    for entry in _parse_entries_from_form(form, debts):
+        await upsert_entry(db, user_id=user.id, month=month, **entry)
+
+    flag = "updated=1" if is_update else f"saved={month}"
+    return RedirectResponse(f"/add?{flag}&month={month}", status_code=303)
 
 
 @router.get("/edit/{month}", response_class=HTMLResponse)
@@ -252,6 +298,11 @@ async def edit_month_get(
         user = await get_current_user(request, db)
     except NotAuthenticated:
         return _redirect_login()
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
 
     months = await get_months(db, user.id)
     if month not in months:
@@ -276,39 +327,55 @@ async def edit_month_post(
     request: Request,
     month: str,
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
 ):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
         return _redirect_login()
 
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
+
     debts = await get_debts(db, user.id)
     form = await request.form()
 
-    await delete_entries_for_month(db, user.id, month)
-
-    for i, debt in enumerate(debts):
-        prefix = f"d_{i}_"
-        bal_s = str(form.get(f"{prefix}balance", "")).replace(",", "")
-        if not bal_s:
-            continue
-        try:
-            await upsert_entry(
-                db,
-                user_id=user.id,
-                debt_id=debt.id,
-                month=month,
-                balance=float(bal_s),
-                min_due=float(str(form.get(f"{prefix}min_due", "") or "0").replace(",", "")),
-                payment=float(str(form.get(f"{prefix}payment", "") or "0").replace(",", "")),
-                due_date=str(form.get(f"{prefix}due_date", "")).strip() or None,
-                paid_on=str(form.get(f"{prefix}paid_on", "")).strip() or None,
-                note=str(form.get(f"{prefix}note", "")).strip() or None,
-            )
-        except ValueError:
-            continue
+    try:
+        await delete_entries_for_month(db, user.id, month)
+        for entry in _parse_entries_from_form(form, debts):
+            await upsert_entry(db, user_id=user.id, month=month, **entry)
+    except Exception:
+        await db.rollback()
+        return RedirectResponse(f"/edit/{month}?msg=Save+failed%2C+please+retry", status_code=303)
 
     return RedirectResponse(f"/edit/{month}?msg=Saved", status_code=303)
+
+
+def _remit_suggestion(data: dict, rate: float, ofw: bool) -> dict:
+    cfg = data.get("income_config", {})
+    latest = latest_month(data)
+    entries = data["months"].get(latest, {})
+
+    total_min = sum(e.get("min_due", 0) for e in entries.values())
+    suggested_sar = round(total_min / rate, 2) if rate and ofw else total_min
+
+    monthly_sar = cfg.get("monthly_sar", 0)
+    expenses_sar = cfg.get("expenses_sar", 0)
+    phone = cfg.get("phone", {})
+    phone_ends = phone.get("ends", "2026-07")
+    phone_sar = phone.get("monthly_sar", 0)
+    phone_active = bool(latest) and latest <= phone_ends
+    net_sar = monthly_sar - expenses_sar - (phone_sar if phone_active else 0)
+
+    return {
+        "suggested_sar": suggested_sar,
+        "available_sar": net_sar,
+        "standard_sar": net_sar,
+        "total_min_php": total_min,
+        "can_cover": net_sar >= suggested_sar,
+    }
 
 
 @router.get("/remit", response_class=HTMLResponse)
@@ -318,15 +385,20 @@ async def remit_get(request: Request, db: AsyncSession = Depends(get_db)):
     except NotAuthenticated:
         return _redirect_login()
 
-    cfg = user.income_config or {}
-    rate = cfg.get("sar_to_php", 15.0)
+    data = await _load_user_data(db, user)
+    cfg = data.get("income_config", {})
+    _ofw = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
+    strategy = cfg.get("strategy", "avalanche")
+    suggestion = _remit_suggestion(data, rate, _ofw)
     return templates.TemplateResponse(request, "remit.html", {
         "active": "remit", "rate": rate, "result": None, "sar_input": "",
+        "ofw_mode": _ofw, "suggestion": suggestion, "strategy": strategy,
     })
 
 
 @router.post("/remit", response_class=HTMLResponse)
-async def remit_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -334,7 +406,9 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db)):
 
     data = await _load_user_data(db, user)
     cfg = data.get("income_config", {})
-    rate = cfg.get("sar_to_php", 15.0)
+    _ofw = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
+    strategy = cfg.get("strategy", "avalanche")
     form = await request.form()
     sar_input = str(form.get("sar", ""))
     result = None
@@ -344,26 +418,42 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db)):
         php = sar_amount * rate
         latest = latest_month(data)
         entries = data["months"].get(latest, {})
-        standard = (cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)) * rate
-        pay_alloc, cc_priority = allocate_budget(entries, data, php)
+        phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
+        phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
+        base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
+        phone_active = bool(latest) and latest <= phone_ends
+        standard = (base_sar - (phone_sar if phone_active else 0)) * rate
+        pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+            entries, data, php, strategy
+        )
+        bonus_php = max(0, php - standard)
         result = {
             "sar": sar_amount, "php": php, "standard": standard,
             "pay_alloc": pay_alloc, "entries": entries,
             "cc_priority": cc_priority,
+            "attack_target": attack_target,
+            "next_target": next_target,
             "fixed_pmts": data.get("fixed_payments", {}),
+            "bonus_php": bonus_php,
+            "bonus_alloc_to": attack_target,
         }
     except ValueError:
         pass
 
+    suggestion = _remit_suggestion(data, rate, _ofw)
     return templates.TemplateResponse(request, "remit.html", {
         "active": "remit", "rate": rate, "result": result, "sar_input": sar_input,
+        "ofw_mode": _ofw, "suggestion": suggestion, "strategy": strategy,
     })
+
+
+VALID_STRATEGIES = ("avalanche", "snowball", "cash_flow")
 
 
 @router.get("/plan", response_class=HTMLResponse)
 async def plan_page(
     request: Request,
-    strategy: str = "avalanche",
+    strategy: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -372,9 +462,118 @@ async def plan_page(
         return _redirect_login()
 
     data = await _load_user_data(db, user)
-    rows, payoffs = compute_plan(data, strategy)
+    cfg = data.get("income_config", {})
+
+    effective_strategy = strategy if strategy in VALID_STRATEGIES else cfg.get("strategy", "avalanche")
+    rows, payoffs, plan_meta = compute_plan(data, effective_strategy)
     return templates.TemplateResponse(request, "plan.html", {
-        "active": "plan", "rows": rows, "payoffs": payoffs, "strategy": strategy,
+        "active": "plan",
+        "rows": rows,
+        "payoffs": payoffs,
+        "strategy": effective_strategy,
+        "truncated": plan_meta["truncated"],
+        "attack_target": plan_meta["attack_target"],
+        "next_target": plan_meta["next_target"],
+    })
+
+
+@router.post("/plan/strategy")
+async def plan_set_strategy(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(validate_csrf),
+):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return _redirect_login()
+
+    form = await request.form()
+    new_strategy = str(form.get("strategy", "")).strip()
+    if new_strategy not in VALID_STRATEGIES:
+        return RedirectResponse("/plan", status_code=303)
+
+    cfg = dict(user.income_config or {})
+    if cfg.get("strategy") != new_strategy:
+        cfg["strategy"] = new_strategy
+        await update_income_config(db, user, cfg)
+
+    return RedirectResponse("/plan", status_code=303)
+
+
+@router.get("/report/{month}", response_class=HTMLResponse)
+async def report_page(request: Request, month: str, db: AsyncSession = Depends(get_db)):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return _redirect_login()
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        return RedirectResponse("/", status_code=302)
+
+    data = await _load_user_data(db, user)
+    if month not in data["months"]:
+        return RedirectResponse("/", status_code=302)
+
+    cfg = data.get("income_config", {})
+    ofw_mode = cfg.get("ofw_mode", True)
+    rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
+    phone_ends = cfg.get("phone", {}).get("ends", "2099-12")
+    phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
+    base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
+    budget_php = (base_sar - (phone_sar if month <= phone_ends else 0)) * rate
+
+    entries = data["months"][month]
+    fixed_pmts = data.get("fixed_payments", {})
+    strategy = cfg.get("strategy", "avalanche")
+    pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
+        entries, data, budget_php, strategy
+    )
+
+    months_sorted = sorted(data["months"].keys())
+    hist_totals = [
+        round(sum((e.get("balance", 0) or 0) for e in data["months"][m].values()), 2)
+        for m in months_sorted
+    ]
+    total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
+    peak_debt = max(hist_totals) if hist_totals else 0
+    paid_off = max(0, peak_debt - total_now)
+    pct_paid = round(paid_off / peak_debt * 100, 1) if peak_debt > 0 else 0
+
+    plan_rows, payoffs, plan_meta = compute_plan(data, strategy)
+    debt_free = plan_rows[-1]["month"] if plan_rows and not plan_meta["truncated"] else "—"
+    monthly_interest = sum(
+        (e.get("balance", 0) or 0) * data["debts"].get(n, {}).get("apr_monthly_pct", 0) / 100
+        for n, e in entries.items()
+        if data["debts"].get(n, {}).get("type") == "credit_card"
+    )
+    entry_interest = {
+        n: round((e.get("balance", 0) or 0) * data["debts"].get(n, {}).get("apr_monthly_pct", 0) / 100, 2)
+        for n, e in entries.items()
+    }
+
+    return templates.TemplateResponse(request, "report.html", {
+        "month": month,
+        "username": user.username,
+        "entries": entries,
+        "fixed_pmts": fixed_pmts,
+        "pay_alloc": pay_alloc,
+        "cc_priority": cc_priority,
+        "attack_target": attack_target,
+        "next_target": next_target,
+        "entry_interest": entry_interest,
+        "total_now": total_now,
+        "peak_debt": peak_debt,
+        "paid_off": paid_off,
+        "pct_paid": pct_paid,
+        "budget_php": budget_php,
+        "monthly_interest": monthly_interest,
+        "debt_free": debt_free,
+        "ofw_mode": ofw_mode,
+        "rate": rate,
+        "strategy": strategy,
     })
 
 
@@ -385,16 +584,22 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
     except NotAuthenticated:
         return _redirect_login()
 
+    cfg = user.income_config or {}
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
-        "cfg": user.income_config or {},
+        "cfg": cfg,
+        "currency_sym": cfg.get("currency_symbol", "₱"),
+        "income_cur": cfg.get("income_currency", "SAR"),
+        "ofw_mode": cfg.get("ofw_mode", True),
+        "strategy": cfg.get("strategy", "avalanche"),
         "msg": None,
         "is_admin": user.is_admin,
+        "has_ai": bool(settings.openai_api_key),
     })
 
 
 @router.post("/settings", response_class=HTMLResponse)
-async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
+async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     try:
         user = await get_current_user(request, db)
     except NotAuthenticated:
@@ -410,7 +615,9 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
             cfg = dict(user.income_config or {})
             cfg["sar_to_php"] = new_rate
             await update_income_config(db, user, cfg)
-            msg = f"Rate updated → 1 SAR = ₱{new_rate}"
+            inc = (user.income_config or {}).get("income_currency", "SAR")
+            sym = (user.income_config or {}).get("currency_symbol", "₱")
+            msg = f"Rate updated → 1 {inc} = {sym}{new_rate}"
         except ValueError:
             msg = "Invalid rate."
 
@@ -430,11 +637,36 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
         except ValueError:
             msg = "Invalid income config values."
 
-    elif action == "apikey":
-        key = str(form.get("apikey", "")).strip()
-        if key:
-            save_env_value(settings.env_file, "OPENAI_API_KEY", key)
-            msg = "API key saved."
+    elif action == "mode":
+        cfg = dict(user.income_config or {})
+        cfg["ofw_mode"] = form.get("ofw_mode") == "1"
+        await update_income_config(db, user, cfg)
+        request.session["ofw_mode"] = cfg["ofw_mode"]
+        msg = "Mode updated."
+
+    elif action == "currency":
+        symbol = str(form.get("currency_symbol", "")).strip()
+        inc_cur = str(form.get("income_currency", "")).strip()
+        if symbol and inc_cur:
+            cfg = dict(user.income_config or {})
+            cfg["currency_symbol"] = symbol
+            cfg["income_currency"] = inc_cur
+            await update_income_config(db, user, cfg)
+            request.session["currency_symbol"] = symbol
+            request.session["income_currency"] = inc_cur
+            msg = f"Currency updated: income {inc_cur}, debt {symbol}"
+        else:
+            msg = "Invalid currency selection."
+
+    elif action == "strategy":
+        new_strategy = str(form.get("strategy", "avalanche"))
+        if new_strategy not in ("avalanche", "snowball", "cash_flow"):
+            msg = "❌ Invalid strategy."
+        else:
+            cfg = dict(user.income_config or {})
+            cfg["strategy"] = new_strategy
+            await update_income_config(db, user, cfg)
+            msg = f"✓ Strategy set to {new_strategy.replace('_', ' ').title()}."
 
     elif action == "password":
         current = str(form.get("current_password", ""))
@@ -450,9 +682,15 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db)):
             await update_user_password(db, user, new_pw)
             msg = "✓ Password updated."
 
+    cfg = user.income_config or {}
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
-        "cfg": user.income_config or {},
+        "cfg": cfg,
+        "currency_sym": cfg.get("currency_symbol", "₱"),
+        "income_cur": cfg.get("income_currency", "SAR"),
+        "ofw_mode": cfg.get("ofw_mode", True),
+        "strategy": cfg.get("strategy", "avalanche"),
         "msg": msg,
         "is_admin": user.is_admin,
+        "has_ai": bool(settings.openai_api_key),
     })
