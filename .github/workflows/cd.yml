@@ -1,3 +1,26 @@
+# CD — Continuous Delivery to Fly.io
+#
+# Trigger:   CI workflow success on `main`, OR manual `workflow_dispatch`.
+# Pipeline:  Fly.io deploy (reusable _fly-deploy.yml) -> tag prod release.
+#
+# The reusable deploy workflow handles:
+#   - flyctl deploy --remote-only
+#   - post-deploy health check at /api/healthz with retry
+#   - automatic rollback to previous successful release on failed health
+#   - GitHub deployment environment status (visible in PR/commit timeline)
+#   - rich deploy summary in $GITHUB_STEP_SUMMARY
+#
+# Manual deploy:
+#   gh workflow run cd.yml --ref main \
+#     -f reason="hotfix for issue #XYZ"
+#
+# Manual rollback (no CI involvement):
+#   flyctl releases list --app personal-debt-tracker
+#   flyctl releases rollback <version> --app personal-debt-tracker --yes
+#
+# Required secrets:
+#   FLY_API_TOKEN — Fly.io org or app-scoped deploy token
+---
 name: CD
 
 on:
@@ -10,63 +33,177 @@ on:
       - completed
   workflow_dispatch:
     inputs:
-      skip_e2e:
-        description: "Skip E2E gate (hotfix only)"
-        type: boolean
-        default: false
       reason:
-        description: "Reason for manual deploy"
+        description: "Reason for manual deploy (visible in audit trail)"
+        type: string
+        required: false
+      tag:
+        description: "Override semver tag (e.g. v0.4.0). Leave empty to auto-bump patch."
         type: string
         required: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  FLY_APP: personal-debt-tracker
-  FLY_HOST: personal-debt-tracker.fly.dev
 
 concurrency:
   group: cd-main
   cancel-in-progress: false
 
 jobs:
-  fly-deploy:
-    name: Deploy to Fly.io
+  # ---------------------------------------------------------------------------
+  # Pre-flight: gate that CI succeeded (workflow_run) OR this is manual.
+  # Surfaces the deploy reason in the run header for traceability.
+  # ---------------------------------------------------------------------------
+  preflight:
+    name: Pre-flight
     runs-on: ubuntu-latest
-    # Gate: CI must succeed for workflow_run, OR manual dispatch
     if: |
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
       github.event_name == 'workflow_dispatch'
+    outputs:
+      reason: ${{ steps.context.outputs.reason }}
+    steps:
+      - id: context
+        run: |
+          REASON="${{ inputs.reason || 'auto via CI success' }}"
+          {
+            echo "## Deploy preflight"
+            echo "- Trigger: \`${{ github.event_name }}\`"
+            echo "- Reason: ${REASON}"
+            echo "- Commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
 
+  # ---------------------------------------------------------------------------
+  # Deploy via reusable workflow.
+  # Auto-rollback ON: if /api/healthz doesn't return 200 within 60s,
+  # _fly-deploy.yml runs `flyctl releases rollback <prev>` automatically.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy to Fly.io
+    needs: preflight
+    permissions:
+      contents: read
+      deployments: write
+    uses: ./.github/workflows/_fly-deploy.yml
+    with:
+      app-name: personal-debt-tracker
+      fly-host: personal-debt-tracker.fly.dev
+      health-path: /api/healthz
+      health-timeout-seconds: 60
+      auto-rollback: true
+      environment: production
+    secrets:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Tag the released commit with a semver tag so we can correlate Fly
+  # releases with git history. Strategy:
+  #   - if `inputs.tag` provided manually -> use it verbatim
+  #   - else find the highest existing v<MAJOR>.<MINOR>.<PATCH> tag, bump PATCH
+  #   - first-ever tag defaults to v0.1.0
+  # Skipped if deploy did not result in a healthy release.
+  # ---------------------------------------------------------------------------
+  tag-release:
+    name: Tag prod release
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: needs.deploy.outputs.health-status == 'healthy'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
-      - name: Print deploy context
+      - name: Compute next semver tag
+        id: tag
+        shell: bash
         run: |
-          echo "Trigger: ${{ github.event_name }}"
-          echo "Skip E2E: ${{ inputs.skip_e2e || 'false' }}"
-          echo "Reason: ${{ inputs.reason || 'auto via CI success' }}"
-          echo "Commit: ${{ github.sha }}"
+          set -euo pipefail
+          if [ -n "${{ inputs.tag }}" ]; then
+            NEW="${{ inputs.tag }}"
+            if ! echo "$NEW" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "::error::Manual tag '$NEW' is not semver (expected vX.Y.Z)"
+              exit 1
+            fi
+          else
+            LAST="$(git tag --list 'v*.*.*' | sort -V | tail -n1)"
+            if [ -z "$LAST" ]; then
+              NEW="v0.1.0"
+            else
+              IFS='.' read -r MAJ MIN PAT <<< "${LAST#v}"
+              NEW="v${MAJ}.${MIN}.$((PAT + 1))"
+            fi
+          fi
+          if git rev-parse "$NEW" >/dev/null 2>&1; then
+            echo "::warning::Tag $NEW already exists — skipping creation"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "Next tag: ${NEW}"
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Deploy
-        run: flyctl deploy --remote-only --app "$FLY_APP"
+      - name: Create and push tag
+        if: steps.tag.outputs.skip == 'false'
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Post-deploy smoke
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl --retry 5 --retry-delay 5 --retry-connrefused \
-            --max-time 30 -fsS "https://${FLY_HOST}/api/healthz"
-          echo ""
-          echo "Health check passed. Deployment live."
+          set -euo pipefail
+          TAG="${{ steps.tag.outputs.tag }}"
+          FLY_REL="${{ needs.deploy.outputs.release-version }}"
+          git tag -a "$TAG" -m "Prod release ${TAG} — Fly release ${FLY_REL}"
+          git push origin "$TAG"
+          {
+            echo "## Release tagged"
+            echo "- Git tag: \`${TAG}\`"
+            echo "- Fly release: \`${FLY_REL}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Rollback hint on failure
-        if: failure()
+  # ---------------------------------------------------------------------------
+  # Rollback / failure summary — always runs, regardless of deploy outcome.
+  # Surfaces a runbook in the GitHub UI so on-call doesn't have to dig.
+  # ---------------------------------------------------------------------------
+  notify:
+    name: Notify outcome
+    runs-on: ubuntu-latest
+    needs: [deploy, tag-release]
+    if: always()
+    steps:
+      - name: Write outcome to summary
+        shell: bash
         run: |
-          echo "::error::Deploy or smoke failed."
-          echo "Rollback options:"
-          echo "  1. flyctl releases list --app $FLY_APP"
-          echo "  2. flyctl releases rollback <version> --app $FLY_APP"
-          echo "  3. Or revert the bad commit on main and let CI/CD redeploy."
-          exit 1
+          DEPLOY="${{ needs.deploy.result }}"
+          TAG="${{ needs.tag-release.result }}"
+          HEALTH="${{ needs.deploy.outputs.health-status }}"
+          RELEASE="${{ needs.deploy.outputs.release-version }}"
+          {
+            echo "## Deploy outcome"
+            echo "- Deploy job: \`${DEPLOY}\`"
+            echo "- Tag job:    \`${TAG}\`"
+            echo "- Health:     \`${HEALTH:-unknown}\`"
+            echo "- Fly rel:    \`${RELEASE:-n/a}\`"
+            echo ""
+            if [ "${HEALTH}" = "rolled-back" ]; then
+              echo "### Auto-rollback fired"
+              echo "Health check failed — Fly app restored to previous release."
+              echo "Investigate: \`flyctl logs --app personal-debt-tracker\`"
+            elif [ "${DEPLOY}" != "success" ]; then
+              echo "### Deploy failed"
+              echo "Manual rollback (if needed):"
+              echo '```bash'
+              echo 'flyctl releases list --app personal-debt-tracker'
+              echo 'flyctl releases rollback <version> --app personal-debt-tracker --yes'
+              echo '```'
+            else
+              echo "### Deploy succeeded"
+              echo "Live: https://personal-debt-tracker.fly.dev"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail job if deploy failed
+        if: needs.deploy.result != 'success'
+        run: exit 1
