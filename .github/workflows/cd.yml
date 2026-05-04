@@ -213,6 +213,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           TAG="${{ steps.tag.outputs.tag }}"
           FLY_REL="${{ needs.deploy.outputs.release-version }}"
           git tag -a "$TAG" -m "Prod release ${TAG} — Fly release ${FLY_REL}"
