@@ -166,10 +166,10 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
   <button class="nav-toggle" id="nav-toggle" onclick="toggleNav()" aria-label="Menu">☰</button>
   <div class="nav-links" id="nav-links">
     <a href="/" class="{{ 'active' if active=='dashboard' else '' }}">Dashboard</a>
-    <a href="/add" class="{{ 'active' if active=='add' else '' }}">Add Month</a>
+    <a href="/budget" class="{{ 'active' if active=='budget' else '' }}">Budget</a>
     <a href="/debts" class="{{ 'active' if active=='debts' else '' }}">My Cards</a>
-    <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
+    <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     {% if request.session.get('user_id') %}
     <div class="avatar-wrapper">
       <button class="avatar-btn" id="avatar-btn" onclick="toggleAvatarMenu()" title="Menu">

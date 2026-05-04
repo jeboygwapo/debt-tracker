@@ -14,6 +14,7 @@ from ..db.crud import (
     get_ai_cache,
     get_all_entries,
     get_debts,
+    get_expenses,
     get_months,
     get_user_by_id,
     update_income_config,
@@ -23,7 +24,7 @@ from ..db.crud import (
 from ..db.models import User
 from ..csrf import validate_csrf
 from ..dependencies import NotAuthenticated, get_current_user
-from ..services.planner import allocate_budget, compute_plan, latest_month
+from ..services.planner import _active_expense_sar, allocate_budget, compute_plan, latest_month
 from ..templating import templates
 
 router = APIRouter()
@@ -62,7 +63,8 @@ async def _load_user_data(db: AsyncSession, user: User) -> dict:
     debts = await get_debts(db, user.id)
     entries = await get_all_entries(db, user.id)
     ai_cache = await get_ai_cache(db, user.id)
-    return build_data_dict(user, debts, entries, ai_cache)
+    expenses = await get_expenses(db, user.id)
+    return build_data_dict(user, debts, entries, ai_cache, expenses=expenses)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -88,10 +90,9 @@ async def dashboard(
 
     ofw_mode = cfg.get("ofw_mode", True)
     rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
-    phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
-    phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-    budget_php = (base_sar - (phone_sar if viewing and viewing <= phone_ends else 0)) * rate
+    expense_sar = _active_expense_sar(data.get("expenses", {}), viewing) if viewing else 0
+    budget_php = (base_sar - expense_sar) * rate
     strategy = cfg.get("strategy", "avalanche")
 
     total_now = sum((e.get("balance", 0) or 0) for e in entries.values())
@@ -216,10 +217,9 @@ async def add_month_get(
         cfg = data.get("income_config", {})
         _ofw = cfg.get("ofw_mode", True)
         _rate = cfg.get("sar_to_php", 15.0) if _ofw else 1.0
-        phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
-        phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
         base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-        budget_php = (base_sar - (phone_sar if saved <= phone_ends else 0)) * _rate
+        expense_sar = _active_expense_sar(data.get("expenses", {}), saved)
+        budget_php = (base_sar - expense_sar) * _rate
         saved_entries = data["months"][saved]
         strategy = cfg.get("strategy", "avalanche")
         pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
@@ -363,11 +363,8 @@ def _remit_suggestion(data: dict, rate: float, ofw: bool) -> dict:
 
     monthly_sar = cfg.get("monthly_sar", 0)
     expenses_sar = cfg.get("expenses_sar", 0)
-    phone = cfg.get("phone", {})
-    phone_ends = phone.get("ends", "2026-07")
-    phone_sar = phone.get("monthly_sar", 0)
-    phone_active = bool(latest) and latest <= phone_ends
-    net_sar = monthly_sar - expenses_sar - (phone_sar if phone_active else 0)
+    expense_sar = _active_expense_sar(data.get("expenses", {}), latest) if latest else 0
+    net_sar = monthly_sar - expenses_sar - expense_sar
 
     return {
         "suggested_sar": suggested_sar,
@@ -418,11 +415,9 @@ async def remit_post(request: Request, db: AsyncSession = Depends(get_db), _: No
         php = sar_amount * rate
         latest = latest_month(data)
         entries = data["months"].get(latest, {})
-        phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
-        phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
         base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-        phone_active = bool(latest) and latest <= phone_ends
-        standard = (base_sar - (phone_sar if phone_active else 0)) * rate
+        expense_sar = _active_expense_sar(data.get("expenses", {}), latest) if latest else 0
+        standard = (base_sar - expense_sar) * rate
         pay_alloc, cc_priority, attack_target, next_target = allocate_budget(
             entries, data, php, strategy
         )
@@ -520,10 +515,9 @@ async def report_page(request: Request, month: str, db: AsyncSession = Depends(g
     cfg = data.get("income_config", {})
     ofw_mode = cfg.get("ofw_mode", True)
     rate = cfg.get("sar_to_php", 15.0) if ofw_mode else 1.0
-    phone_ends = cfg.get("phone", {}).get("ends", "2099-12")
-    phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
-    budget_php = (base_sar - (phone_sar if month <= phone_ends else 0)) * rate
+    expense_sar = _active_expense_sar(data.get("expenses", {}), month)
+    budget_php = (base_sar - expense_sar) * rate
 
     entries = data["months"][month]
     fixed_pmts = data.get("fixed_payments", {})
@@ -609,35 +603,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
     action = str(form.get("action", ""))
     msg = None
 
-    if action == "rate":
-        try:
-            new_rate = float(str(form.get("rate", "0")))
-            cfg = dict(user.income_config or {})
-            cfg["sar_to_php"] = new_rate
-            await update_income_config(db, user, cfg)
-            inc = (user.income_config or {}).get("income_currency", "SAR")
-            sym = (user.income_config or {}).get("currency_symbol", "₱")
-            msg = f"Rate updated → 1 {inc} = {sym}{new_rate}"
-        except ValueError:
-            msg = "Invalid rate."
-
-    elif action == "income":
-        try:
-            cfg = dict(user.income_config or {})
-            cfg["monthly_sar"] = float(str(form.get("monthly_sar", "0") or "0"))
-            cfg["expenses_sar"] = float(str(form.get("expenses_sar", "0") or "0"))
-            phone_sar = str(form.get("phone_sar", "0") or "0")
-            phone_ends = str(form.get("phone_ends", "")).strip()
-            if float(phone_sar) > 0 and phone_ends:
-                cfg["phone"] = {"monthly_sar": float(phone_sar), "ends": phone_ends}
-            else:
-                cfg.pop("phone", None)
-            await update_income_config(db, user, cfg)
-            msg = "Income config updated."
-        except ValueError:
-            msg = "Invalid income config values."
-
-    elif action == "mode":
+    if action == "mode":
         cfg = dict(user.income_config or {})
         cfg["ofw_mode"] = form.get("ofw_mode") == "1"
         await update_income_config(db, user, cfg)

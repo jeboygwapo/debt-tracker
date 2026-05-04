@@ -81,19 +81,30 @@ async def test_remit_post(authed_client):
 
 @pytest.mark.anyio
 async def test_settings_page(authed_client):
+    """Settings page renders. Income/Rate moved to /budget in Phase 1."""
     r = await authed_client.get("/settings")
     assert r.status_code == 200
-    assert "Income Config" in r.text
 
 
 @pytest.mark.anyio
-async def test_settings_update_rate(authed_client):
+async def test_settings_update_rate_handler_removed(authed_client):
+    """`rate` action removed from /settings — owned by /budget now."""
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        before = (user.income_config or {}).get("sar_to_php")
+
     token = await get_csrf_token(authed_client, "/settings")
     r = await authed_client.post("/settings", data={
         "action": "rate", "rate": "15.5", "csrf_token": token,
     })
     assert r.status_code == 200
-    assert "15.5" in r.text
+
+    async with AsyncSessionLocal() as db:
+        user = await get_user_by_username(db, "testadmin")
+        assert (user.income_config or {}).get("sar_to_php") == before
 
 
 @pytest.mark.anyio

@@ -55,6 +55,19 @@ def _fixed_rate(fp_cfg: Dict, balance: float) -> float:
     return fp_cfg["monthly"]
 
 
+def _active_expense_sar(expenses: Dict, month: str) -> float:
+    """Sum monthly_sar of expenses where ends is None or ends >= month."""
+    if not expenses:
+        return 0.0
+    total = 0.0
+    for cfg in expenses.values():
+        ends = cfg.get("ends")
+        if ends and ends < month:
+            continue
+        total += float(cfg.get("monthly_sar", 0) or 0)
+    return total
+
+
 def _build_cc_data(
     sim_balances: Dict[str, float],
     cc_names: List[str],
@@ -216,10 +229,9 @@ def compute_plan(
     cfg = data.get("income_config", {})
     fixed_pmts = data.get("fixed_payments", {})
     debts_meta = data.get("debts", {})
+    expenses = data.get("expenses", {})
     sar_php = cfg.get("sar_to_php", 15.0)
     plan_start = month_add(latest, 1)
-    phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
-    phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
     entries = data["months"].get(latest, {})
 
@@ -245,8 +257,7 @@ def compute_plan(
         if all(v <= 0 for v in sim.values()):
             break
 
-        phone_active = m <= phone_ends
-        budget = (base_sar - (phone_sar if phone_active else 0)) * sar_php
+        budget = (base_sar - _active_expense_sar(expenses, m)) * sar_php
 
         cc_data = _build_cc_data(sim, cc_names, data)
         cc_sorted = _sort_ccs(cc_data, strategy)

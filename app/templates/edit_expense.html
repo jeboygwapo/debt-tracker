@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap">
+  <a href="/budget" class="btn-back">← Back</a>
+  <h2 style="margin:0">Edit Expense</h2>
+</div>
+
+{% set is_error = msg and ('Invalid' in msg or 'not found' in msg.lower()) %}
+{% if msg %}
+<div class="alert {{ 'alert-error' if is_error else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<div class="section">
+  <form method="POST" action="/budget">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="update_expense">
+    <input type="hidden" name="id" value="{{ expense.id }}">
+
+    <div class="row">
+      <div>
+        <label>Name *</label>
+        <input name="name" value="{{ expense.name }}" required maxlength="80">
+      </div>
+      <div>
+        <label>Monthly ({{ income_currency(request) }}) *</label>
+        <input name="monthly_sar" type="number" step="0.01" min="0" required value="{{ expense.monthly_sar }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Ends (YYYY-MM, optional)</label>
+        <input name="ends" placeholder="2027-06" pattern="\d{4}-\d{2}" value="{{ expense.ends or '' }}">
+      </div>
+      <div></div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+    </div>
+  </form>
+</div>
+
+<div class="section" style="border-left:3px solid #ef4444">
+  <h3 style="color:#ef4444">Danger Zone</h3>
+  <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">
+    Deleting <strong>{{ expense.name }}</strong> will permanently remove this expense row. This cannot be undone.
+  </p>
+  <button class="btn" style="background:#7f1d1d;color:#fca5a5" onclick="showDeleteConfirm()">Delete This Expense</button>
+
+  <div id="delete-confirm" style="display:none;margin-top:16px;padding:14px;background:#450a0a;border-radius:8px;border:1px solid #7f1d1d">
+    <p style="font-size:.9rem;margin-bottom:12px">
+      Type <strong style="color:#fca5a5">{{ expense.name }}</strong> to confirm deletion:
+    </p>
+    <input id="confirm-name-input" placeholder="{{ expense.name }}" style="max-width:300px;margin-bottom:10px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <form method="POST" action="/budget" id="delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <input type="hidden" name="action" value="delete_expense">
+        <input type="hidden" name="id" value="{{ expense.id }}">
+        <button type="submit" id="confirm-delete-btn" class="btn" style="background:#b91c1c;color:#fff" disabled>
+          Yes, Delete Permanently
+        </button>
+      </form>
+      <button class="btn btn-back" onclick="hideDeleteConfirm()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showDeleteConfirm() {
+  document.getElementById('delete-confirm').style.display = 'block';
+  document.getElementById('confirm-name-input').focus();
+}
+
+function hideDeleteConfirm() {
+  document.getElementById('delete-confirm').style.display = 'none';
+  document.getElementById('confirm-name-input').value = '';
+  document.getElementById('confirm-delete-btn').disabled = true;
+}
+
+document.getElementById('confirm-name-input').addEventListener('input', function() {
+  const expected = {{ expense.name | tojson }};
+  document.getElementById('confirm-delete-btn').disabled = this.value !== expected;
+});
+</script>
+{% endblock %}
+</content>
+</invoke>

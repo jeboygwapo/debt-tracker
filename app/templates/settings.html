@@ -17,21 +17,13 @@
   </form>
 </div>
 
-{% if ofw_mode %}
-<div class="section">
-  <h3>{{ income_currency(request) }} → {{ currency_symbol(request) }} Rate</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Check Wise or Western Union for current rate before updating.</p>
-  <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <input type="hidden" name="action" value="rate">
-    <div>
-      <label>Current: 1 {{ income_currency(request) }} = {{ currency_symbol(request) }}{{ cfg.get('sar_to_php', 15.0) }}</label>
-      <input name="rate" placeholder="{{ cfg.get('sar_to_php', 15.0) }}" style="max-width:160px">
-    </div>
-    <button type="submit" class="btn btn-primary">Update Rate</button>
-  </form>
+<div class="section" style="border-left:3px solid #3b82f6">
+  <h3>💰 Income & Expenses</h3>
+  <p style="color:var(--muted);font-size:.9rem;margin-bottom:14px;line-height:1.5">
+    Income, exchange rate, and itemized monthly expenses now live in the Budget tab.
+  </p>
+  <a href="/budget" class="btn btn-primary">Go to Budget →</a>
 </div>
-{% endif %}
 
 <div class="section">
   <h3 style="margin-bottom:12px">
@@ -130,42 +122,4 @@
   </form>
 </div>
 
-<div class="section">
-  <h3>Income Config</h3>
-  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">Amounts in {{ income_currency(request) }}. Budget = (Salary − Expenses − Phone){% if ofw_mode %} × Exchange Rate{% endif %}.</p>
-  <form method="POST" style="max-width:420px">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <input type="hidden" name="action" value="income">
-    <div style="margin-bottom:12px">
-      <label>Monthly Salary ({{ income_currency(request) }})</label>
-      <input name="monthly_sar" type="number" step="0.01" value="{{ cfg.get('monthly_sar', 0) }}">
-    </div>
-    <div style="margin-bottom:12px">
-      <label>Expenses ({{ income_currency(request) }})</label>
-      <input name="expenses_sar" type="number" step="0.01" value="{{ cfg.get('expenses_sar', 0) }}">
-    </div>
-    <p style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:16px 0 8px">Phone Installment (optional)</p>
-    <div class="row">
-      <div>
-        <label>Monthly Amount ({{ income_currency(request) }})</label>
-        <input name="phone_sar" type="number" step="0.01" value="{{ cfg.get('phone', {}).get('monthly_sar', '') }}">
-      </div>
-      <div>
-        <label>Ends (YYYY-MM)</label>
-        <input name="phone_ends" placeholder="2026-07" pattern="\d{4}-\d{2}" value="{{ cfg.get('phone', {}).get('ends', '') }}">
-      </div>
-    </div>
-    <div style="margin-top:4px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:.85rem;color:var(--muted);margin-bottom:14px">
-      {% set net = cfg.get('monthly_sar', 0) - cfg.get('expenses_sar', 0) %}
-      Net available: <strong style="color:var(--text)">{{ income_currency(request) }} {{ '{:,.0f}'.format(net) }}</strong>
-      {% if ofw_mode %}
-      &nbsp;→&nbsp;
-      <strong style="color:#22c55e">
-        {{ currency_symbol(request) }}{{ '{:,.0f}'.format(net * cfg.get('sar_to_php', 15)) }}
-      </strong>
-      {% endif %}
-    </div>
-    <button type="submit" class="btn btn-primary">Update Income Config</button>
-  </form>
-</div>
 {% endblock %}
