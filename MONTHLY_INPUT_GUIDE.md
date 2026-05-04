@@ -9,10 +9,10 @@ python3 app.py   # ← only command you need to remember
 Opens browser automatically at http://localhost:5050
 
 **Monthly steps (all done in browser):**
-1. Settings → update SAR→PHP rate (check Wise/Western Union first)
+1. **Budget** → update SAR→PHP rate (check Wise/Western Union first); review Disposable card
 2. Remittance → enter SAR amount → see exact allocation per card
 3. Dashboard → "Pay This Month" table → pay the cards
-4. Add Month → enter new statement data after paying
+4. Dashboard → "+ Add Month" → enter new statement data after paying
 5. Dashboard → AI Analysis section shows advice automatically
 
 ---
@@ -74,15 +74,23 @@ python3 tracker.py help                 # this list
 
 ---
 
-## Income config (debts.json)
+## Income & expenses (Budget tab — `/budget`)
 
-| Field | Value |
-|-------|-------|
-| Monthly salary | 13,850 SAR |
-| Saudi expenses | 7,000 SAR (includes ₱1,500 SAR emergency fund) |
-| Phone installment | 1,200 SAR (ends July 2026) |
-| Standard remittance | 5,650 SAR / month |
-| SAR→PHP rate | update monthly via `setrate` |
+Edited live in browser; persisted to DB (no more `debts.json`).
+
+| Field | Where | Value |
+|-------|-------|-------|
+| Monthly salary | Budget → Income card | 13,850 SAR |
+| Daily Living Cap | Budget → Income card | 7,000 SAR (unitemized misc cap) |
+| Phone installment | Budget → Expenses (itemized row) | 1,200 SAR (ends 2026-07) |
+| SAR→PHP rate | Budget → Exchange Rate card | check Wise/WU monthly |
+| Standard remittance | Remit page (computed) | ~5,650 SAR / month |
+
+**Itemized vs. cap:** the Daily Living Cap is unitemized lump-sum (food, transport, sundries). Add Expense rows for any recurring named bill (phone, gym, subscriptions). Both subtract from disposable.
+
+**Add expense:** Budget → "+ Add Expense" → name, monthly_sar, ends (YYYY-MM, optional). Leave ends blank for indefinite.
+
+**End-date inclusive:** an expense with `ends=2026-07` is subtracted in July, not in August.
 
 ---
 

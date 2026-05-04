@@ -29,6 +29,7 @@ app/
     pages.py         # /, /add, /edit/{month}, /plan, /remit, /settings
     api.py           # GET /api/analysis
     debts.py         # GET/POST /debts, /debts/{id}/edit, /debts/{id}/delete, /debts/reorder
+    budget.py        # GET/POST /budget, GET /budget/expenses/{id}/edit
     admin.py         # GET /admin, POST /admin/users/create|{id}/reset-password|{id}/delete
   services/
     ai.py            # get_analysis(), compute_hash() — OpenAI call + AiCache
@@ -44,11 +45,13 @@ scripts/             # one-off admin/migration scripts
 - `Debt` — id, user_id, name, type, apr_monthly_pct, note, is_fixed, fixed_monthly, fixed_ends (YYYY-MM), fixed_reduced_monthly, fixed_reduced_threshold, sort_order
 - `MonthlyEntry` — id, user_id, debt_id, month (YYYY-MM), balance, min_due, payment, paid_on, due_date, note
 - `AiCache` — user_id (PK), data_hash, html, generated_at
+- `Expense` — id, user_id, name, monthly_sar, ends (YYYY-MM, nullable=indefinite), sort_order
 
 ## Key CRUD Functions (app/db/crud.py)
 - Users: `get_user_by_username`, `get_user_by_id`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `delete_user`
 - Debts: `get_debts(db, user_id)`, `get_debt_by_id(db, debt_id, user_id)`, `create_debt(db, user_id, **kwargs)`, `update_debt(db, debt, **kwargs)`, `delete_debt(db, debt_id, user_id)`, `reorder_debts(db, user_id, ordered_ids)`
 - Entries: `get_months`, `get_entries_for_month`, `get_all_entries`, `upsert_entry`, `delete_entries_for_month`
+- Expenses: `get_expenses(db, user_id)`, `get_expense_by_id(db, expense_id, user_id)`, `create_expense(db, user_id, **kwargs)`, `update_expense(db, expense, **kwargs)`, `delete_expense(db, expense_id, user_id)`, `reorder_expenses(db, user_id, ordered_ids)`
 - AI: `get_ai_cache(db, user_id)`, `set_ai_cache(db, user_id, data_hash, html)`
 
 ## income_config JSON shape (stored on User.income_config)
@@ -94,7 +97,7 @@ Update after changes to add/edit month flow, debt fields, or income config. Docu
 
 ## Templates — Patterns
 - All extend `base.html`, set `active=` context var for nav highlight
-- Nav active values: `dashboard`, `add`, `debts`, `remit`, `plan`, `settings`
+- Nav active values: `dashboard`, `budget`, `debts`, `plan`, `remit`, `settings`. (Phase 1 IA: Add tab dropped, accessed from Dashboard "+ Add Month" button.)
 - CSS classes: `.section`, `.card`, `.grid`, `.btn`, `.btn-primary`, `.btn-success`, `.btn-back`, `.badge`, `.badge-green/.red/.yellow`, `.qbtn`, `.alert`, `.alert-success/.alert-error`
 - Tables: add `table-card` for mobile card-style collapse; `td` needs `data-label=` for mobile labels
 - Delete confirmation: type-the-name input enables submit (see `edit_debt.html`)
@@ -129,11 +132,21 @@ python -m pytest tests/ -v
 
 ## Settings Actions (POST /settings, action= field)
 - `mode` — toggle `ofw_mode` bool in income_config + session
-- `rate` — update `sar_to_php` in income_config
-- `income` — update `monthly_sar`, `expenses_sar`, `phone.monthly_sar`, `phone.ends`
 - `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
 - `password` — verify current, enforce 12-char min, update hash
+- `currency` — save `currency_symbol` to income_config + update `request.session["currency_symbol"]`
 - `strategy` — update `income_config["strategy"]` ∈ `{"avalanche", "snowball", "cash_flow"}`. Single source of truth; dashboard/remit/plan/report all read from here.
+
+**Note:** `income` and `rate` actions removed in Phase 1 (2026-05-04) — now owned by `/budget`. Old POSTs silently fall through to settings render.
+
+## Budget Actions (POST /budget, action= field)
+- `income` — update `monthly_sar` (salary) + `expenses_sar` (daily living cap) in income_config
+- `rate` — update `sar_to_php` in income_config
+- `add_expense` — create Expense(name, monthly_sar, ends, sort_order=highest+1)
+- `update_expense` — id, name, monthly_sar, ends
+- `delete_expense` — id (ownership-scoped)
+- `reorder` — `order` form field = comma-separated ids
+- All return 303 redirect to `/budget?msg=...`. Template auto-detects "Invalid"/"not found" prefix → red alert.
 
 ## Plan Strategy (POST /plan/strategy)
 - CSRF-guarded. Validates strategy ∈ `VALID_STRATEGIES`. Persists to `income_config["strategy"]`. 303 redirect to `/plan`.
@@ -144,8 +157,11 @@ python -m pytest tests/ -v
 - Constants: `EPSILON = 0.5`, `MIN_DUE_PCT = 0.05`, `MIN_DUE_FLOOR_PHP = 500.0`, `PLAN_HORIZON_MONTHS = 120`
 - `_snap(x)` — collapses sub-EPSILON floats to 0, rounds others to 2 dp. Use after every balance arithmetic write.
 - `_dynamic_min_due(stored_min, balance)` — `max(stored, balance * 5%, ₱500)`, capped at balance.
+- `_active_expense_sar(expenses, month)` — sums `monthly_sar` of expenses where `ends is None` or `ends >= month`. End-date inclusive.
 - Interest order: payment FIRST, then accrue → `(bal - pay) * (1 + apr/100)`. NOT `bal * (1 + apr/100) - pay`.
 - Hybrid cascade: pay fixed loans → pay all CC min_dues → top CC attack + max-1 spillover → fixed-loan prepay (only if `Debt.allow_prepayment=True`).
+- `plan_start = month_add(latest, 1)` — auto-derived from latest entry, NOT from config. No more hardcoded `2026-07`.
+- Budget formula: `(monthly_sar - expenses_sar - active_expense_sar(month)) × sar_to_php`. `expenses_sar` = unitemized cap; itemized Expense rows subtracted on top.
 - `compute_plan` returns `(rows, payoffs, meta)`. `meta = {"truncated", "attack_target", "next_target"}`.
 - `allocate_budget` returns `(pay_alloc, cc_priority, attack_target, next_target)`.
 
@@ -157,7 +173,7 @@ python -m pytest tests/ -v
 
 ## Remit response — bonus fields
 - `remit_post` result dict carries `bonus_php = max(0, php - standard)` and `bonus_alloc_to = attack_target` for the green "🎯 Bonus +₱X → ATTACK [card]" callout in `remit.html`.
-- `standard` = full plan budget = `(monthly_sar - expenses_sar - phone_sar) * rate` (phone subtracted only when month ≤ phone.ends).
+- `standard` = full plan budget = `(monthly_sar - expenses_sar - active_expense_sar(month)) * rate`. Itemized expenses replace the legacy phone-only subtraction.
 
 ## DB Dialect Notes
 - `income_config` uses `sa.JSON` (not `JSONB`) — works SQLite + Postgres
@@ -192,16 +208,17 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
-## Current State (as of 2026-05-01)
-- Single-user functional: login, dashboard, add/edit months, plan, remit, settings, AI analysis
-- Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation
-- Income config fully editable in Settings (salary, expenses, phone installment)
+## Current State (as of 2026-05-04)
+- **Phase 1 wealth-tracker pivot shipped**: `/budget` tab combines income config + itemized monthly expenses + disposable card. Income config moved out of Settings. Nav restructured.
+- Single-user functional: login, dashboard, add/edit months, plan, remit, budget, settings, AI analysis
+- Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation, allow_prepayment toggle on non-CC debts
+- Budget UI: `/budget` — salary + cap + exchange rate + itemized Expense rows (CRUD + reorder); disposable card with negative-budget warning
 - Multi-user: registration via `/register` (gated by ALLOW_REGISTRATION env var)
 - First-run init: `scripts/init_db.py` — migrations + admin seed, idempotent
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 105 unit+integration + 25 smoke + e2e (Playwright). Run all non-e2e: `python3 -m pytest tests/ -m "not e2e" -v`
+- Test suite: 99 unit+integration + 27 smoke + e2e (Playwright). Run all non-e2e: `python3 -m pytest tests/ -m "not e2e" -v`
 - Currency: user-selectable debt currency symbol stored in `income_config["currency_symbol"]` + session; set via Settings → Debt Currency; Jinja2 `currency_symbol(request)` global + `| peso` filter both read from session; defaults to ₱
 - OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
 - Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
@@ -224,16 +241,19 @@ python scripts/init_db.py
 - Postgres: Fly Unmanaged Postgres (`jayvee-debt-tracker-db`, DB name: `jayvee_debt_tracker`)
 - Config: `fly.toml` at project root
 - Secrets managed via `flyctl secrets set` (see `fly.env.example`)
-- App currently SCALED TO ZERO (intentional) — run `flyctl scale count 1 --app personal-debt-tracker` to restore
+- App scaled to 1 (live) — `flyctl scale count 0 --app personal-debt-tracker` to suspend
 
-## Settings Actions (POST /settings, action= field) — full list
-- `rate` — update `sar_to_php` in income_config
-- `income` — update `monthly_sar`, `expenses_sar`, `phone.monthly_sar`, `phone.ends`
-- `apikey` — save OPENAI_API_KEY to .env via `save_env_value()`
-- `password` — verify current, enforce 12-char min, update hash
-- `currency` — save `currency_symbol` to income_config + update `request.session["currency_symbol"]`
-- `mode` — toggle `ofw_mode` bool in income_config + session
-- `strategy` — persist `income_config["strategy"]` ∈ `{"avalanche", "snowball", "cash_flow"}`
+## Wealth-Tracker Roadmap (approved 2026-05-04)
+4-phase pivot from debt-only → personal wealth guide. See `~/.claude/projects/.../memory/project_debt_tracker_roadmap.md`.
+- **Phase 1** (DONE 2026-05-04) — `/budget` tab + Expense model + nav restructure
+- **Phase 2** — `/goals` tab (emergency fund, named savings buckets, target date, monthly auto-allocation)
+- **Phase 3** — `/networth` + Account/AccountSnapshot + AI statement parser (gpt-4o-mini reads PDF/CSV/image, extracts balance, user confirms; original file discarded)
+- **Phase 4** (north star) — `/flow` Sankey allocation editor
+
+**Permanent scope guards:** ❌ live bank API sync, ❌ credential scraping, ❌ transaction-level ledger, ❌ trade execution, ❌ multi-currency portfolios beyond PHP+SAR, ❌ original PDF/image storage.
 
 ## Pending Work (next session)
-1. **Forgot password** — lowest priority, contact admin covers it for now
+1. **Phase 2 — `/goals` tab** — kickoff with Principal Architect re-brief
+2. **Multi-tenant isolation audit** — `income_config` JSON + session-keyed currency leak per-user state to globals; needed before Phase 3 ships
+3. **`reorder_expenses` cross-tenant index drift** — same risk as `reorder_debts`; fix together when touched
+4. **Forgot password** — lowest priority, contact admin covers it for now

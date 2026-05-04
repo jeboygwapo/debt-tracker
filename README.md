@@ -170,14 +170,25 @@ No Docker image registry (GHCR) is used. Fly.io builds the image remotely from `
 
 ---
 
+## Budget Reference (`/budget`)
+
+Income, expenses, and exchange rate live here (moved out of Settings in Phase 1, 2026-05-04).
+
+| Section | What it controls |
+|---|---|
+| Disposable | Live calc: `(salary − cap − itemized expenses) × rate`. Red banner if negative. |
+| Income | Monthly salary (SAR) + Daily Living Cap (unitemized misc) |
+| Exchange Rate | SAR → PHP rate (hidden when OFW mode off) |
+| Monthly Expenses | Itemized recurring bills (phone, gym, subs, etc.) with optional end-date |
+| Strategy | Plan strategy is in `/plan` page now (was Settings) |
+
 ## Settings Reference
 
 | Section | What it controls |
 |---|---|
 | Mode | OFW mode on/off (exchange rate conversion) |
-| Exchange Rate | Income → debt currency rate |
-| Currency | Income currency code + debt currency symbol |
-| Income Config | Monthly salary, expenses, phone installment |
+| Currency | Debt currency symbol (₱, $, €, etc.) |
+| Strategy | Avalanche / Snowball / Cash Flow |
 | OpenAI API Key | Enables AI analysis (stored in `.env` on server) |
 | Change Password | Min 12 characters |
 
