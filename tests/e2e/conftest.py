@@ -130,7 +130,7 @@ def _wait_for_app() -> None:
 # ── Public fixtures the tests use ─────────────────────────────────────────────
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def base_url() -> str:
     return E2E_BASE_URL
 
