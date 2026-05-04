@@ -217,7 +217,7 @@ def compute_plan(
     fixed_pmts = data.get("fixed_payments", {})
     debts_meta = data.get("debts", {})
     sar_php = cfg.get("sar_to_php", 15.0)
-    plan_start = cfg.get("plan_start", "2026-07")
+    plan_start = month_add(latest, 1)
     phone_ends = cfg.get("phone", {}).get("ends", "2026-07")
     phone_sar = cfg.get("phone", {}).get("monthly_sar", 0)
     base_sar = cfg.get("monthly_sar", 0) - cfg.get("expenses_sar", 0)
@@ -227,23 +227,9 @@ def compute_plan(
         n: (e.get("min_due", 0) or 0) for n, e in entries.items()
     }
 
-    # Decay from latest month → plan_start using dynamic min_due, payment-first ordering
     sim: Dict[str, float] = {
         n: (e.get("balance", 0) or 0) for n, e in entries.items()
     }
-    gap = month_diff(latest, plan_start)
-    for _ in range(gap):
-        for n, bal in list(sim.items()):
-            if bal <= 0:
-                continue
-            dtype = debts_meta.get(n, {}).get("type", "credit_card")
-            apr = debts_meta.get(n, {}).get("apr_monthly_pct", 0.0)
-            if dtype == "credit_card":
-                pay = _dynamic_min_due(stored_mins.get(n, 0), bal)
-                sim[n] = _snap(max(0, (bal - pay) * (1 + apr / 100)))
-            else:
-                pay = stored_mins.get(n, 0)
-                sim[n] = _snap(max(0, bal - pay))
 
     sim = {k: v for k, v in sim.items() if v > 0}
     cc_names = [n for n in sim if debts_meta.get(n, {}).get("type") == "credit_card"]
