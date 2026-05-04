@@ -1,5 +1,5 @@
 """Converts DB records into the dict format the planner/AI services expect."""
-from .models import AiCache, Debt, MonthlyEntry, User
+from .models import AiCache, Debt, Expense, MonthlyEntry, User
 
 
 def build_debts_dict(debts: list[Debt]) -> dict:
@@ -45,11 +45,22 @@ def build_months_dict(entries: list[MonthlyEntry], debts: list[Debt]) -> dict:
     return months
 
 
+def build_expenses_dict(expenses: list[Expense]) -> dict:
+    return {
+        e.name: {
+            "monthly_sar": float(e.monthly_sar or 0.0),
+            "ends": e.ends or None,
+        }
+        for e in expenses
+    }
+
+
 def build_data_dict(
     user: User,
     debts: list[Debt],
     entries: list[MonthlyEntry],
     ai_cache: AiCache | None = None,
+    expenses: list[Expense] | None = None,
 ) -> dict:
     cache = {}
     if ai_cache:
@@ -63,6 +74,7 @@ def build_data_dict(
         "debts": build_debts_dict(debts),
         "fixed_payments": build_fixed_payments(debts),
         "months": build_months_dict(entries, debts),
+        "expenses": build_expenses_dict(expenses or []),
         "ai_cache": cache,
     }
 

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..config import hash_password
-from .models import AiCache, Debt, MonthlyEntry, Notification, NotificationRead, User
+from .models import AiCache, Debt, Expense, MonthlyEntry, Notification, NotificationRead, User
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -103,6 +103,56 @@ async def reorder_debts(db: AsyncSession, user_id: int, ordered_ids: list[int]) 
 
 async def delete_debt(db: AsyncSession, debt_id: int, user_id: int) -> None:
     await db.execute(delete(Debt).where(Debt.id == debt_id, Debt.user_id == user_id))
+    await db.commit()
+
+
+# ── Expenses ──────────────────────────────────────────────────────────────────
+
+async def get_expenses(db: AsyncSession, user_id: int) -> list[Expense]:
+    result = await db.execute(
+        select(Expense).where(Expense.user_id == user_id).order_by(Expense.sort_order, Expense.id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_expense_by_id(db: AsyncSession, expense_id: int, user_id: int) -> Optional[Expense]:
+    result = await db.execute(
+        select(Expense).where(Expense.id == expense_id, Expense.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_expense(db: AsyncSession, user_id: int, **kwargs) -> Expense:
+    expense = Expense(user_id=user_id, **kwargs)
+    db.add(expense)
+    await db.commit()
+    await db.refresh(expense)
+    return expense
+
+
+async def update_expense(db: AsyncSession, expense: Expense, **kwargs) -> Expense:
+    for k, v in kwargs.items():
+        setattr(expense, k, v)
+    await db.commit()
+    await db.refresh(expense)
+    return expense
+
+
+async def delete_expense(db: AsyncSession, expense_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        delete(Expense).where(Expense.id == expense_id, Expense.user_id == user_id)
+    )
+    await db.commit()
+    return (result.rowcount or 0) > 0
+
+
+async def reorder_expenses(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
+    for i, expense_id in enumerate(ordered_ids):
+        await db.execute(
+            update(Expense)
+            .where(Expense.id == expense_id, Expense.user_id == user_id)
+            .values(sort_order=i)
+        )
     await db.commit()
 
 

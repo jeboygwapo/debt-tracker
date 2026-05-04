@@ -13,7 +13,7 @@ from app.config import load_env_file, settings
 load_env_file(Path(__file__).parent.parent / ".env")
 
 from app.db.base import Base
-from app.db.models import AiCache, Debt, MonthlyEntry, User  # noqa: F401
+from app.db.models import AiCache, Debt, Expense, MonthlyEntry, Notification, NotificationRead, User  # noqa: F401
 
 config = context.config
 _sync_url = settings.database_url.replace("+asyncpg", "").replace("+aiosqlite", "")

@@ -11,6 +11,7 @@
     <option value="{{ m }}" {% if m == viewing %}selected{% endif %}>{{ m }}{% if m == latest %} ★{% endif %}</option>
     {% endfor %}
   </select>
+  <a href="/add" class="btn-back" style="padding:6px 14px;font-size:.8rem">+ Add Month</a>
   <a href="/edit/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem">✏️ Edit</a>
   {% if viewing %}<a href="/report/{{ viewing }}" class="btn-back" style="padding:6px 14px;font-size:.8rem" target="_blank">🖨️ Print Report</a>{% endif %}
 </div>

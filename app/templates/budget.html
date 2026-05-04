@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set is_ofw = income_config.get('ofw_mode', True) %}
+{% set inc_cur = income_currency(request) %}
+{% set sym = currency_symbol(request) %}
+{% set salary = income_config.get('monthly_sar', 0) or 0 %}
+{% set cap = income_config.get('expenses_sar', 0) or 0 %}
+{% set rate = income_config.get('sar_to_php', 1.0) or 1.0 %}
+{% set itemized_total = active_expenses_sar if active_expenses_sar is not none else 0 %}
+{% set net = salary - cap - itemized_total %}
+{% set disposable = disposable_php if disposable_php is not none else (net * (rate if is_ofw else 1.0)) %}
+{% set is_error = msg and ('Invalid' in msg or 'not found' in msg.lower()) %}
+
+<h2 style="margin-bottom:20px">Budget</h2>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if is_error else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<!-- Section C — Disposable (top, prominent) -->
+<div class="section" style="border-left:3px solid {{ '#ef4444' if disposable < 0 else '#22c55e' }}">
+  <h3>Disposable Budget</h3>
+
+  {% if disposable < 0 %}
+  <div class="alert alert-error" style="margin-bottom:14px">
+    ⚠ Negative disposable — your fixed costs exceed income.
+  </div>
+  {% endif %}
+
+  <div style="display:grid;grid-template-columns:1fr;gap:14px">
+    <div style="background:var(--bg);border-radius:8px;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88rem;line-height:1.7">
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--muted)">Salary</span>
+        <strong>{{ inc_cur }} {{ '{:,.0f}'.format(salary) }}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--muted)">− Daily Living Cap</span>
+        <span class="red">−{{ inc_cur }} {{ '{:,.0f}'.format(cap) }}</span>
+      </div>
+      {% for e in expenses if not e.ends or e.ends >= target_month %}
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--muted)">− {{ e.name }}</span>
+        <span class="red">−{{ inc_cur }} {{ '{:,.0f}'.format(e.monthly_sar) }}</span>
+      </div>
+      {% endfor %}
+      <div style="border-top:1px solid var(--border);margin:8px 0"></div>
+      <div style="display:flex;justify-content:space-between;font-size:1rem">
+        <span style="color:var(--text)">Net</span>
+        <strong class="{{ 'red' if net < 0 else 'green' }}">
+          {{ inc_cur }} {{ '{:,.2f}'.format(net) }}
+          {% if is_ofw %}
+          &nbsp;→&nbsp;{{ sym }}{{ '{:,.2f}'.format(disposable) }}
+          <span style="color:var(--muted);font-weight:400;font-size:.78rem">(at {{ rate }})</span>
+          {% endif %}
+        </strong>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-bottom:0">
+      <div class="card">
+        <div class="label">Disposable {% if is_ofw %}({{ sym }}){% endif %}</div>
+        <div class="value {{ 'red' if disposable < 0 else 'green' }}">
+          {{ sym }}{{ '{:,.0f}'.format(disposable) }}
+        </div>
+      </div>
+      <div class="card">
+        <div class="label">Itemized expenses</div>
+        <div class="value">{{ inc_cur }} {{ '{:,.0f}'.format(itemized_total) }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Active expense rows</div>
+        <div class="value">{{ expenses | length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section A — Income (only OFW) -->
+{% if is_ofw %}
+<div class="section">
+  <h3>Income & Exchange Rate</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Monthly salary in {{ inc_cur }}, plus a misc daily living cap and the {{ inc_cur }} → {{ sym }} exchange rate.
+  </p>
+
+  <form method="POST" action="/budget" style="max-width:520px;margin-bottom:18px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="income">
+    <div class="row">
+      <div>
+        <label>Monthly Salary ({{ inc_cur }})</label>
+        <input name="monthly_sar" type="number" step="0.01" min="0" value="{{ salary }}">
+      </div>
+      <div>
+        <label>
+          Daily Living Budget Cap ({{ inc_cur }})
+          <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+            <span class="tip-icon">i</span>
+            <span class="tip-body">Misc / unitemized monthly cap (groceries, transport, food). Itemized fixed bills go in the table below.</span>
+          </span>
+        </label>
+        <input name="expenses_sar" type="number" step="0.01" min="0" value="{{ cap }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Income</button>
+  </form>
+
+  <form method="POST" action="/budget" style="max-width:520px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="rate">
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div style="flex:1;min-width:180px">
+        <label>{{ inc_cur }} → {{ sym }} Exchange Rate</label>
+        <input name="rate" type="number" step="0.0001" min="0" value="{{ rate }}">
+      </div>
+      <button type="submit" class="btn btn-primary">Save Rate</button>
+    </div>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:8px">Check Wise / Western Union for the current rate.</p>
+  </form>
+</div>
+{% else %}
+<div class="section">
+  <h3>Income</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Your monthly salary and misc daily living cap.
+  </p>
+  <form method="POST" action="/budget" style="max-width:520px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="income">
+    <div class="row">
+      <div>
+        <label>Monthly Salary ({{ inc_cur }})</label>
+        <input name="monthly_sar" type="number" step="0.01" min="0" value="{{ salary }}">
+      </div>
+      <div>
+        <label>
+          Daily Living Budget Cap ({{ inc_cur }})
+          <span class="tip" tabindex="0" onclick="event.stopPropagation();this.classList.toggle('active')">
+            <span class="tip-icon">i</span>
+            <span class="tip-body">Misc / unitemized monthly cap (groceries, transport, food). Itemized fixed bills go in the table below.</span>
+          </span>
+        </label>
+        <input name="expenses_sar" type="number" step="0.01" min="0" value="{{ cap }}">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Save Income</button>
+  </form>
+</div>
+{% endif %}
+
+<!-- Section B — Monthly Expenses -->
+<div class="section">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+    <h3 style="margin:0">Monthly Expenses (itemized)</h3>
+    <button type="button" class="btn btn-primary" id="add-expense-btn"
+            onclick="document.getElementById('add-expense-form').style.display='block';this.style.display='none'">
+      + Add Expense
+    </button>
+  </div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Recurring fixed bills (phone plan, gym, subscriptions, etc.). Subtracted from your budget every month until end-date.
+  </p>
+
+  <!-- Add expense inline form -->
+  <div id="add-expense-form" style="display:none;background:var(--bg);border-radius:8px;padding:14px;margin-bottom:14px;border:1px solid var(--border)">
+    <form method="POST" action="/budget">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="action" value="add_expense">
+      <input type="hidden" name="sort_order" value="{{ expenses | length }}">
+      <div class="row">
+        <div>
+          <label>Name *</label>
+          <input name="name" placeholder="Phone plan" required maxlength="80">
+        </div>
+        <div>
+          <label>Monthly ({{ inc_cur }}) *</label>
+          <input name="monthly_sar" type="number" step="0.01" min="0" required placeholder="200">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Ends (YYYY-MM, optional)</label>
+          <input name="ends" placeholder="2027-06" pattern="\d{4}-\d{2}">
+        </div>
+        <div></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-success">Save Expense</button>
+        <button type="button" class="btn btn-back"
+                onclick="document.getElementById('add-expense-form').style.display='none';document.getElementById('add-expense-btn').style.display=''">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {% if expenses %}
+  <form method="POST" action="/budget" id="reorder-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="reorder">
+    <input type="hidden" name="order" id="order-input"
+           value="{{ expenses | map(attribute='id') | join(',') }}">
+  </form>
+
+  <div style="overflow:hidden;border-radius:8px;border:1px solid var(--border)">
+    <table class="table-card" style="margin:0" id="expenses-table">
+      <thead>
+        <tr>
+          <th style="width:60px">Order</th>
+          <th>Name</th>
+          <th>Monthly ({{ inc_cur }})</th>
+          <th>Ends</th>
+          <th style="width:140px"></th>
+        </tr>
+      </thead>
+      <tbody id="expenses-tbody">
+      {% for e in expenses %}
+      <tr data-id="{{ e.id }}">
+        <td data-label="Order" style="white-space:nowrap">
+          <button type="button" class="qbtn" onclick="moveRow(this, -1)" title="Move up">↑</button>
+          <button type="button" class="qbtn" onclick="moveRow(this, 1)" title="Move down">↓</button>
+        </td>
+        <td data-label="Name"><strong>{{ e.name }}</strong></td>
+        <td data-label="Monthly">{{ inc_cur }} {{ '{:,.2f}'.format(e.monthly_sar) }}</td>
+        <td data-label="Ends">
+          {% if e.ends %}
+            <span class="badge badge-yellow">until {{ e.ends }}</span>
+          {% else %}
+            <span style="color:var(--faint)">— indefinite</span>
+          {% endif %}
+        </td>
+        <td data-label="" style="white-space:nowrap">
+          <a href="/budget/expenses/{{ e.id }}/edit" class="qbtn qbtn-blue">Edit</a>
+          <form method="POST" action="/budget" style="display:inline"
+                onsubmit="return confirm('Delete expense &quot;{{ e.name }}&quot;?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+            <input type="hidden" name="action" value="delete_expense">
+            <input type="hidden" name="id" value="{{ e.id }}">
+            <button type="submit" class="qbtn qbtn-red">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="save-order-bar" style="display:none;position:sticky;bottom:16px;text-align:center;margin-top:12px">
+    <button type="button" class="btn btn-success" onclick="saveOrder()" style="box-shadow:0 4px 16px rgba(0,0,0,.4)">
+      Save Order
+    </button>
+    <button type="button" class="btn btn-back" onclick="cancelOrder()" style="margin-left:8px">Cancel</button>
+  </div>
+
+  {% else %}
+  <div style="text-align:center;padding:32px 16px;color:var(--muted)">
+    <div style="font-size:2rem;margin-bottom:10px">🧾</div>
+    <p style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:6px">No itemized expenses yet</p>
+    <p style="font-size:.85rem">Add recurring fixed bills (phone plan, gym, streaming) so they're subtracted from your monthly budget automatically.</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+const _originalOrder = document.getElementById('order-input')?.value || '';
+
+function moveRow(btn, dir) {
+  const row = btn.closest('tr');
+  const tbody = row.parentElement;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const idx = rows.indexOf(row);
+  const target = idx + dir;
+  if (target < 0 || target >= rows.length) return;
+  if (dir === -1) tbody.insertBefore(row, rows[target]);
+  else tbody.insertBefore(rows[target], row);
+  updateOrderInput();
+}
+
+function updateOrderInput() {
+  const ids = Array.from(document.querySelectorAll('#expenses-tbody tr'))
+    .map(r => r.dataset.id).join(',');
+  const input = document.getElementById('order-input');
+  if (!input) return;
+  input.value = ids;
+  document.getElementById('save-order-bar').style.display =
+    ids !== _originalOrder ? 'block' : 'none';
+}
+
+function saveOrder() {
+  document.getElementById('reorder-form').submit();
+}
+
+function cancelOrder() {
+  location.reload();
+}
+</script>
+{% endblock %}
+</content>
+</invoke>

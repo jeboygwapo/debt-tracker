@@ -44,7 +44,8 @@ async def test_smoke_012_plan_page(smoke_authed_client):
 async def test_smoke_013_settings_page(smoke_authed_client):
     r = await smoke_authed_client.get("/settings")
     assert r.status_code == 200
-    assert "Income Config" in r.text
+    # Income config moved to /budget; settings now hosts auth + preferences only
+    assert "Change Password" in r.text or "Currency" in r.text
 
 
 async def test_smoke_014_admin_page(smoke_authed_client):

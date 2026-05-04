@@ -48,6 +48,17 @@ class Debt(Base):
     monthly_entries: Mapped[list["MonthlyEntry"]] = relationship(back_populates="debt", cascade="all, delete-orphan")
 
 
+class Expense(Base):
+    __tablename__ = "expenses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    monthly_sar: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
+    ends: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
+
+
 class MonthlyEntry(Base):
     __tablename__ = "monthly_entries"
 
