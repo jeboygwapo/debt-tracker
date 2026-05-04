@@ -130,6 +130,11 @@ def _wait_for_app() -> None:
 # ── Public fixtures the tests use ─────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def setup_test_db():
+    """No-op override — e2e tests hit the real Docker stack, not the in-memory test DB."""
+
+
 @pytest.fixture(scope="session")
 def base_url() -> str:
     return E2E_BASE_URL
