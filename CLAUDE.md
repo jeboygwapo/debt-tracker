@@ -21,7 +21,7 @@ app/
   storage.py         # legacy shim (unused, keep for reference)
   db/
     base.py          # async engine, session factory, get_db
-    models.py        # User, Debt, MonthlyEntry, AiCache
+    models.py        # User, Debt, Expense, Goal, MonthlyEntry, AiCache
     crud.py          # all DB ops — see Key CRUD Functions below
     adapter.py       # build_data_dict(), debt_name_to_id()
   routes/
@@ -30,6 +30,7 @@ app/
     api.py           # GET /api/analysis
     debts.py         # GET/POST /debts, /debts/{id}/edit, /debts/{id}/delete, /debts/reorder
     budget.py        # GET/POST /budget, GET /budget/expenses/{id}/edit
+    goals.py         # GET/POST /goals, GET /goals/{id}/edit
     admin.py         # GET /admin, POST /admin/users/create|{id}/reset-password|{id}/delete
   services/
     ai.py            # get_analysis(), compute_hash() — OpenAI call + AiCache
@@ -46,12 +47,14 @@ scripts/             # one-off admin/migration scripts
 - `MonthlyEntry` — id, user_id, debt_id, month (YYYY-MM), balance, min_due, payment, paid_on, due_date, note
 - `AiCache` — user_id (PK), data_hash, html, generated_at
 - `Expense` — id, user_id, name, monthly_sar, ends (YYYY-MM, nullable=indefinite), sort_order
+- `Goal` — id, user_id, name, target_php, current_php, target_date (YYYY-MM, nullable), monthly_alloc_php, sort_order, created_at
 
 ## Key CRUD Functions (app/db/crud.py)
 - Users: `get_user_by_username`, `get_user_by_id`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `delete_user`
 - Debts: `get_debts(db, user_id)`, `get_debt_by_id(db, debt_id, user_id)`, `create_debt(db, user_id, **kwargs)`, `update_debt(db, debt, **kwargs)`, `delete_debt(db, debt_id, user_id)`, `reorder_debts(db, user_id, ordered_ids)`
 - Entries: `get_months`, `get_entries_for_month`, `get_all_entries`, `upsert_entry`, `delete_entries_for_month`
 - Expenses: `get_expenses(db, user_id)`, `get_expense_by_id(db, expense_id, user_id)`, `create_expense(db, user_id, **kwargs)`, `update_expense(db, expense, **kwargs)`, `delete_expense(db, expense_id, user_id)`, `reorder_expenses(db, user_id, ordered_ids)`
+- Goals: `get_goals(db, user_id)`, `get_goal_by_id(db, goal_id, user_id)`, `create_goal(db, user_id, **kwargs)`, `update_goal(db, goal, **kwargs)`, `delete_goal(db, goal_id, user_id)`, `reorder_goals(db, user_id, ordered_ids)`
 - AI: `get_ai_cache(db, user_id)`, `set_ai_cache(db, user_id, data_hash, html)`
 
 ## income_config JSON shape (stored on User.income_config)
@@ -97,7 +100,7 @@ Update after changes to add/edit month flow, debt fields, or income config. Docu
 
 ## Templates — Patterns
 - All extend `base.html`, set `active=` context var for nav highlight
-- Nav active values: `dashboard`, `budget`, `debts`, `plan`, `remit`, `settings`. (Phase 1 IA: Add tab dropped, accessed from Dashboard "+ Add Month" button.)
+- Nav active values: `dashboard`, `budget`, `goals`, `debts`, `plan`, `remit`, `settings`. (Phase 1 IA: Add tab dropped, accessed from Dashboard "+ Add Month" button.)
 - CSS classes: `.section`, `.card`, `.grid`, `.btn`, `.btn-primary`, `.btn-success`, `.btn-back`, `.badge`, `.badge-green/.red/.yellow`, `.qbtn`, `.alert`, `.alert-success/.alert-error`
 - Tables: add `table-card` for mobile card-style collapse; `td` needs `data-label=` for mobile labels
 - Delete confirmation: type-the-name input enables submit (see `edit_debt.html`)
@@ -147,6 +150,21 @@ python -m pytest tests/ -v
 - `delete_expense` — id (ownership-scoped)
 - `reorder` — `order` form field = comma-separated ids
 - All return 303 redirect to `/budget?msg=...`. Template auto-detects "Invalid"/"not found" prefix → red alert.
+
+## Goals Actions (POST /goals, action= field)
+- `add_goal` — create Goal(name, target_php, current_php, monthly_alloc_php, target_date, sort_order)
+- `update_goal` — id, name, target_php, current_php, monthly_alloc_php, target_date
+- `delete_goal` — id (ownership-scoped)
+- `deposit` — id, amount → adds amount to current_php (quick contribution shortcut)
+- `reorder` — `order` form field = comma-separated ids
+- All return 303 redirect to `/goals?msg=...`. Template auto-detects "Invalid"/"not found" prefix → red alert.
+
+`_goal_progress(goal)` → `{pct, remaining, months_left, on_track, done}`:
+- `pct = min(100, current / target * 100)`
+- `on_track`: True if `ceil(remaining / monthly_alloc_php) <= months_until_target_date`, else False. None if no target_date.
+- `months_left`: from target_date if set, else `ceil(remaining / monthly_alloc_php)` if monthly > 0.
+
+Presets in UI: PAG-IBIG MP2 (₱500,000 / ₱500/mo), Emergency Fund (₱50,000 / ₱2,000/mo).
 
 ## Plan Strategy (POST /plan/strategy)
 - CSRF-guarded. Validates strategy ∈ `VALID_STRATEGIES`. Persists to `income_config["strategy"]`. 303 redirect to `/plan`.
@@ -218,7 +236,7 @@ python scripts/init_db.py
 - Dockerfile hardened: non-root user, python:3.13-slim, /data chowned
 - Debt sort order: ↑↓ buttons, POST /debts/reorder, sticky Save Order bar
 - Admin dashboard: /admin — user list, create, reset password, delete (self-delete blocked)
-- Test suite: 99 unit+integration + 27 smoke + e2e (Playwright). Run all non-e2e: `python3 -m pytest tests/ -m "not e2e" -v`
+- Test suite: 120 unit+integration + 27 smoke + e2e (Playwright). Run all non-e2e: `python3 -m pytest tests/ -m "not e2e" -v`
 - Currency: user-selectable debt currency symbol stored in `income_config["currency_symbol"]` + session; set via Settings → Debt Currency; Jinja2 `currency_symbol(request)` global + `| peso` filter both read from session; defaults to ₱
 - OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
 - Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
@@ -246,14 +264,14 @@ python scripts/init_db.py
 ## Wealth-Tracker Roadmap (approved 2026-05-04)
 4-phase pivot from debt-only → personal wealth guide. See `~/.claude/projects/.../memory/project_debt_tracker_roadmap.md`.
 - **Phase 1** (DONE 2026-05-04) — `/budget` tab + Expense model + nav restructure
-- **Phase 2** — `/goals` tab (emergency fund, named savings buckets, target date, monthly auto-allocation)
+- **Phase 2** (DONE 2026-05-05) — `/goals` tab + Goal model + progress bars + deposit shortcut + 2 presets
 - **Phase 3** — `/networth` + Account/AccountSnapshot + AI statement parser (gpt-4o-mini reads PDF/CSV/image, extracts balance, user confirms; original file discarded)
 - **Phase 4** (north star) — `/flow` Sankey allocation editor
 
 **Permanent scope guards:** ❌ live bank API sync, ❌ credential scraping, ❌ transaction-level ledger, ❌ trade execution, ❌ multi-currency portfolios beyond PHP+SAR, ❌ original PDF/image storage.
 
 ## Pending Work (next session)
-1. **Phase 2 — `/goals` tab** — kickoff with Principal Architect re-brief
+1. **Phase 3 — `/networth` + Account/AccountSnapshot + AI statement parser** — gpt-4o-mini reads PDF/CSV/image, extracts balance, user confirms; original file discarded
 2. **Multi-tenant isolation audit** — `income_config` JSON + session-keyed currency leak per-user state to globals; needed before Phase 3 ships
-3. **`reorder_expenses` cross-tenant index drift** — same risk as `reorder_debts`; fix together when touched
+3. **`reorder_expenses` / `reorder_goals` cross-tenant index drift** — same pattern as `reorder_debts`; fix together when touched
 4. **Forgot password** — lowest priority, contact admin covers it for now

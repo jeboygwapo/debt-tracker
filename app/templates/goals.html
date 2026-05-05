@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set sym = currency_symbol(request) %}
+{% set is_error = msg and ('Invalid' in msg or 'not found' in msg.lower()) %}
+
+<h2 style="margin-bottom:20px">Goals</h2>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if is_error else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<!-- Add Goal -->
+<div class="section">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+    <h3 style="margin:0">Add a Goal</h3>
+    <button type="button" class="btn btn-primary" id="add-goal-btn"
+            onclick="document.getElementById('add-goal-form').style.display='block';this.style.display='none'">
+      + Add Goal
+    </button>
+  </div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Savings targets — emergency fund, MP2, travel, gadget, anything.
+  </p>
+
+  <div id="add-goal-form" style="display:none;background:var(--bg);border-radius:8px;padding:14px;border:1px solid var(--border)">
+    <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="qbtn qbtn-blue" onclick="fillPreset('PAG-IBIG MP2', 500000, 500)">
+        PAG-IBIG MP2 preset
+      </button>
+      <button type="button" class="qbtn qbtn-blue" onclick="fillPreset('Emergency Fund', 50000, 2000)">
+        Emergency Fund preset
+      </button>
+    </div>
+    <form method="POST" action="/goals">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="action" value="add_goal">
+      <div class="row">
+        <div>
+          <label>Name *</label>
+          <input name="name" id="preset-name" placeholder="e.g. Emergency Fund" required maxlength="100">
+        </div>
+        <div>
+          <label>Target ({{ sym }}) *</label>
+          <input name="target_php" id="preset-target" type="number" step="0.01" min="0" required placeholder="50000">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Already saved ({{ sym }})</label>
+          <input name="current_php" id="preset-current" type="number" step="0.01" min="0" placeholder="0" value="0">
+        </div>
+        <div>
+          <label>Monthly contribution ({{ sym }})</label>
+          <input name="monthly_alloc_php" id="preset-monthly" type="number" step="0.01" min="0" placeholder="500">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Target date (YYYY-MM, optional)</label>
+          <input name="target_date" id="preset-date" placeholder="2027-12" pattern="\d{4}-\d{2}">
+        </div>
+        <div></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-success">Save Goal</button>
+        <button type="button" class="btn btn-back"
+                onclick="document.getElementById('add-goal-form').style.display='none';document.getElementById('add-goal-btn').style.display=''">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Goals list -->
+{% if goals %}
+
+<form method="POST" action="/goals" id="reorder-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+  <input type="hidden" name="action" value="reorder">
+  <input type="hidden" name="order" id="order-input"
+         value="{{ goals | map(attribute='id') | join(',') }}">
+</form>
+
+<div id="save-order-bar" style="display:none;position:sticky;bottom:16px;text-align:center;margin-bottom:12px">
+  <button type="button" class="btn btn-success" onclick="saveOrder()" style="box-shadow:0 4px 16px rgba(0,0,0,.4)">
+    Save Order
+  </button>
+  <button type="button" class="btn btn-back" onclick="location.reload()" style="margin-left:8px">Cancel</button>
+</div>
+
+<div id="goals-list">
+{% for g in goals %}
+{% set p = progress[g.id] %}
+<div class="section" data-id="{{ g.id }}" style="border-left:3px solid {{ '#22c55e' if p.done else ('#3b82f6' if p.on_track else ('#ef4444' if p.on_track == false else '#475569')) }}">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <strong style="font-size:1rem">{{ g.name }}</strong>
+        {% if p.done %}
+          <span class="badge badge-green">Done!</span>
+        {% elif p.on_track == true %}
+          <span class="badge badge-green">On track</span>
+        {% elif p.on_track == false %}
+          <span class="badge badge-red">Behind</span>
+        {% else %}
+          <span class="badge" style="background:var(--border);color:var(--muted)">No target date</span>
+        {% endif %}
+      </div>
+
+      <!-- Progress bar -->
+      <div style="background:var(--border);border-radius:999px;height:10px;margin-bottom:8px;overflow:hidden">
+        <div style="background:{{ '#22c55e' if p.done else '#3b82f6' }};height:100%;width:{{ p.pct }}%;border-radius:999px;transition:width .3s"></div>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)">
+        <span><strong style="color:var(--text)">{{ sym }}{{ '{:,.0f}'.format(g.current_php) }}</strong> saved</span>
+        <span>of <strong style="color:var(--text)">{{ sym }}{{ '{:,.0f}'.format(g.target_php) }}</strong></span>
+        <span class="{{ 'green' if p.done else '' }}"><strong>{{ p.pct }}%</strong></span>
+        {% if not p.done %}
+          <span>{{ sym }}{{ '{:,.0f}'.format(p.remaining) }} to go</span>
+        {% endif %}
+        {% if g.monthly_alloc_php > 0 %}
+          <span>{{ sym }}{{ '{:,.0f}'.format(g.monthly_alloc_php) }}/mo</span>
+        {% endif %}
+        {% if p.months_left is not none and not p.done %}
+          <span>~{{ p.months_left }} month{{ 's' if p.months_left != 1 else '' }} left</span>
+        {% endif %}
+        {% if g.target_date %}
+          <span>Target: {{ g.target_date }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+      <button type="button" class="qbtn" onclick="moveGoal(this, -1)" title="Move up">↑</button>
+      <button type="button" class="qbtn" onclick="moveGoal(this, 1)" title="Move down">↓</button>
+      <button type="button" class="qbtn qbtn-green" onclick="openDeposit({{ g.id }}, '{{ g.name | replace("'", "\\'") }}')" title="Add deposit">+ Deposit</button>
+      <a href="/goals/{{ g.id }}/edit" class="qbtn qbtn-blue">Edit</a>
+      <form method="POST" action="/goals" style="display:inline"
+            onsubmit="return confirm('Delete goal &quot;{{ g.name }}&quot;?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <input type="hidden" name="action" value="delete_goal">
+        <input type="hidden" name="id" value="{{ g.id }}">
+        <button type="submit" class="qbtn qbtn-red">Delete</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+
+{% else %}
+<div class="section" style="text-align:center;padding:48px 16px">
+  <div style="font-size:2.5rem;margin-bottom:12px">🎯</div>
+  <p style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:6px">No goals yet</p>
+  <p style="font-size:.85rem;color:var(--muted);margin-bottom:20px">Set a target — emergency fund, PAG-IBIG MP2, travel, anything worth saving for.</p>
+  <button type="button" class="btn btn-primary"
+          onclick="document.getElementById('add-goal-form').style.display='block';document.getElementById('add-goal-btn').style.display='none';document.querySelector('.section').scrollIntoView({behavior:'smooth'})">
+    + Add Your First Goal
+  </button>
+</div>
+{% endif %}
+
+<!-- Deposit modal -->
+<div id="deposit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:12px;padding:24px;width:100%;max-width:360px;margin:16px;border:1px solid var(--border)">
+    <h3 style="font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:16px" id="deposit-title">Deposit</h3>
+    <form method="POST" action="/goals">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="action" value="deposit">
+      <input type="hidden" name="id" id="deposit-id">
+      <div style="margin-bottom:14px">
+        <label>Amount ({{ sym }})</label>
+        <input name="amount" id="deposit-amount" type="number" step="0.01" min="0" required placeholder="500" autofocus>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-success" style="flex:1">Record</button>
+        <button type="button" class="btn btn-back" onclick="closeDeposit()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const _originalOrder = document.getElementById('order-input')?.value || '';
+
+function fillPreset(name, target, monthly) {
+  document.getElementById('preset-name').value = name;
+  document.getElementById('preset-target').value = target;
+  document.getElementById('preset-monthly').value = monthly;
+  document.getElementById('preset-current').value = 0;
+  document.getElementById('preset-date').value = '';
+}
+
+function openDeposit(id, name) {
+  document.getElementById('deposit-id').value = id;
+  document.getElementById('deposit-title').textContent = 'Deposit → ' + name;
+  document.getElementById('deposit-amount').value = '';
+  const overlay = document.getElementById('deposit-overlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('deposit-amount').focus(), 50);
+}
+
+function closeDeposit() {
+  document.getElementById('deposit-overlay').style.display = 'none';
+}
+
+document.getElementById('deposit-overlay')?.addEventListener('click', function(e) {
+  if (e.target === this) closeDeposit();
+});
+
+function moveGoal(btn, dir) {
+  const section = btn.closest('[data-id]');
+  const list = document.getElementById('goals-list');
+  const sections = Array.from(list.querySelectorAll('[data-id]'));
+  const idx = sections.indexOf(section);
+  const target = idx + dir;
+  if (target < 0 || target >= sections.length) return;
+  if (dir === -1) list.insertBefore(section, sections[target]);
+  else list.insertBefore(sections[target], section);
+  updateOrderInput();
+}
+
+function updateOrderInput() {
+  const ids = Array.from(document.querySelectorAll('#goals-list [data-id]'))
+    .map(s => s.dataset.id).join(',');
+  const input = document.getElementById('order-input');
+  if (!input) return;
+  input.value = ids;
+  document.getElementById('save-order-bar').style.display =
+    ids !== _originalOrder ? 'block' : 'none';
+}
+
+function saveOrder() {
+  document.getElementById('reorder-form').submit();
+}
+</script>
+
+{% endblock %}

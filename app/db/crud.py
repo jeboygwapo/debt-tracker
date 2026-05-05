@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..config import hash_password
-from .models import AiCache, Debt, Expense, MonthlyEntry, Notification, NotificationRead, User
+from .models import AiCache, Debt, Expense, Goal, MonthlyEntry, Notification, NotificationRead, User
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -151,6 +151,56 @@ async def reorder_expenses(db: AsyncSession, user_id: int, ordered_ids: list[int
         await db.execute(
             update(Expense)
             .where(Expense.id == expense_id, Expense.user_id == user_id)
+            .values(sort_order=i)
+        )
+    await db.commit()
+
+
+# ── Goals ─────────────────────────────────────────────────────────────────────
+
+async def get_goals(db: AsyncSession, user_id: int) -> list[Goal]:
+    result = await db.execute(
+        select(Goal).where(Goal.user_id == user_id).order_by(Goal.sort_order, Goal.id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_goal_by_id(db: AsyncSession, goal_id: int, user_id: int) -> Optional[Goal]:
+    result = await db.execute(
+        select(Goal).where(Goal.id == goal_id, Goal.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_goal(db: AsyncSession, user_id: int, **kwargs) -> Goal:
+    goal = Goal(user_id=user_id, **kwargs)
+    db.add(goal)
+    await db.commit()
+    await db.refresh(goal)
+    return goal
+
+
+async def update_goal(db: AsyncSession, goal: Goal, **kwargs) -> Goal:
+    for k, v in kwargs.items():
+        setattr(goal, k, v)
+    await db.commit()
+    await db.refresh(goal)
+    return goal
+
+
+async def delete_goal(db: AsyncSession, goal_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        delete(Goal).where(Goal.id == goal_id, Goal.user_id == user_id)
+    )
+    await db.commit()
+    return (result.rowcount or 0) > 0
+
+
+async def reorder_goals(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
+    for i, goal_id in enumerate(ordered_ids):
+        await db.execute(
+            update(Goal)
+            .where(Goal.id == goal_id, Goal.user_id == user_id)
             .values(sort_order=i)
         )
     await db.commit()

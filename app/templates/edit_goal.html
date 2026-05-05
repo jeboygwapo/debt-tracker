@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set sym = currency_symbol(request) %}
+{% set is_error = msg and ('Invalid' in msg or 'not found' in msg.lower()) %}
+
+<h2 style="margin-bottom:20px">Edit Goal</h2>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if is_error else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<div class="section">
+  <form method="POST" action="/goals" style="max-width:520px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="update_goal">
+    <input type="hidden" name="id" value="{{ goal.id }}">
+
+    <div class="row">
+      <div>
+        <label>Name *</label>
+        <input name="name" required maxlength="100" value="{{ goal.name }}">
+      </div>
+      <div>
+        <label>Target ({{ sym }}) *</label>
+        <input name="target_php" type="number" step="0.01" min="0" required value="{{ goal.target_php }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Currently saved ({{ sym }})</label>
+        <input name="current_php" type="number" step="0.01" min="0" value="{{ goal.current_php }}">
+      </div>
+      <div>
+        <label>Monthly contribution ({{ sym }})</label>
+        <input name="monthly_alloc_php" type="number" step="0.01" min="0" value="{{ goal.monthly_alloc_php }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Target date (YYYY-MM, optional)</label>
+        <input name="target_date" placeholder="2027-12" pattern="\d{4}-\d{2}" value="{{ goal.target_date or '' }}">
+      </div>
+      <div></div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <button type="submit" class="btn btn-primary">Save</button>
+      <a href="/goals" class="btn btn-back">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<!-- Delete -->
+<div class="section" style="border-left:3px solid #ef4444">
+  <h3 style="margin-bottom:10px">Delete Goal</h3>
+  <p style="font-size:.85rem;color:var(--muted);margin-bottom:14px">
+    Permanently removes this goal and all progress. Cannot be undone.
+  </p>
+  <form method="POST" action="/goals"
+        onsubmit="return confirm('Delete goal &quot;{{ goal.name }}&quot;? This cannot be undone.')">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="delete_goal">
+    <input type="hidden" name="id" value="{{ goal.id }}">
+    <button type="submit" class="btn" style="background:#7f1d1d;color:#fca5a5">Delete Goal</button>
+  </form>
+</div>
+
+{% endblock %}

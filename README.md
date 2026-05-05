@@ -11,6 +11,7 @@ Personal debt repayment tracker for managing credit card payoff, fixed loans, an
 - **Dashboard** — total debt, credit card balance, monthly interest, debt-free target, avalanche payment plan
 - **Balance Trend & Breakdown** — Chart.js line/bar/donut charts with projected payoff curve
 - **Budget / Remittance Planner** — enter amount available, see allocation across all cards
+- **Goals tab** — savings targets (emergency fund, PAG-IBIG MP2, etc.) with progress bars, on-track badge, deposit shortcut, and 2 presets
 - **Avalanche payoff engine** — minimums on all, extra cash attacks highest-APR card first
 - **OFW mode** — toggle in Settings; converts income currency → debt currency at saved rate; when off, budget stays in local currency with no conversion
 - **Empty states** — all pages guide new users with CTAs when no data exists yet
@@ -167,6 +168,24 @@ No Docker image registry (GHCR) is used. Fly.io builds the image remotely from `
 | `FLY_API_TOKEN` | `deploy-fly.yml`, `backup.yml` |
 | `SECRET_KEY` | `backup.yml` (DB export) |
 | `DB_PASSWORD` | `backup.yml` (proxy tunnel to Fly Postgres) |
+
+---
+
+## Goals Reference (`/goals`)
+
+Savings targets live here. Each goal tracks progress toward a PHP target.
+
+| Field | What it is |
+|---|---|
+| Name | Goal label (e.g. Emergency Fund, PAG-IBIG MP2) |
+| Target | Total PHP amount to save |
+| Currently saved | Starting / current balance |
+| Monthly contribution | Expected monthly deposit (PHP) |
+| Target date | YYYY-MM — enables "On track" / "Behind" badge |
+
+Presets: PAG-IBIG MP2 (₱500k / ₱500mo), Emergency Fund (₱50k / ₱2k/mo). Edit values before saving.
+
+"+ Deposit" button adds a quick deposit to current balance without opening the edit page.
 
 ---
 

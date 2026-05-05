@@ -59,6 +59,20 @@ class Expense(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
 
 
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    target_php: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
+    current_php: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
+    target_date: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    monthly_alloc_php: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class MonthlyEntry(Base):
     __tablename__ = "monthly_entries"
 
