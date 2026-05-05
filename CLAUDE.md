@@ -8,7 +8,7 @@ Filipino OFW context: income SAR, debts PHP, avalanche/snowball payoff planning.
 - **Backend**: FastAPI, SQLAlchemy (async), Alembic, Pydantic
 - **DB**: SQLite (dev), Postgres (prod via Docker)
 - **Frontend**: Jinja2 templates, vanilla JS, Chart.js, Tailwind (CDN)
-- **AI**: OpenAI `gpt-4o-mini` for debt analysis (optional, keyed via settings)
+- **AI**: OpenAI `gpt-4o-mini` — debt analysis + AI statement parser (vision)
 - **Auth**: Session-based (starlette `SessionMiddleware`), bcrypt password hash
 
 ## Project Layout
@@ -21,7 +21,7 @@ app/
   storage.py         # legacy shim (unused, keep for reference)
   db/
     base.py          # async engine, session factory, get_db
-    models.py        # User, Debt, Expense, Goal, MonthlyEntry, AiCache
+    models.py        # User, Debt, Expense, Goal, Account, AccountSnapshot, MonthlyEntry, AiCache
     crud.py          # all DB ops — see Key CRUD Functions below
     adapter.py       # build_data_dict(), debt_name_to_id()
   routes/
@@ -31,10 +31,12 @@ app/
     debts.py         # GET/POST /debts, /debts/{id}/edit, /debts/{id}/delete, /debts/reorder
     budget.py        # GET/POST /budget, GET /budget/expenses/{id}/edit
     goals.py         # GET/POST /goals, GET /goals/{id}/edit
+    networth.py      # GET/POST /networth, GET /networth/accounts/{id}/edit, POST /networth/parse
     admin.py         # GET /admin, POST /admin/users/create|{id}/reset-password|{id}/delete
   services/
-    ai.py            # get_analysis(), compute_hash() — OpenAI call + AiCache
-    planner.py       # compute_plan(), allocate_budget(), latest_month()
+    ai.py              # get_analysis(), compute_hash() — OpenAI call + AiCache
+    planner.py         # compute_plan(), allocate_budget(), latest_month()
+    statement_parser.py  # parse_statement(), compute_file_hash(), _extract_json(), _validate_result(), ParseError
 templates/           # Jinja2 HTML (extend base.html, set active=)
 static/              # chart.min.js, any CSS overrides
 alembic/             # DB migrations
@@ -48,6 +50,8 @@ scripts/             # one-off admin/migration scripts
 - `AiCache` — user_id (PK), data_hash, html, generated_at
 - `Expense` — id, user_id, name, monthly_sar, ends (YYYY-MM, nullable=indefinite), sort_order
 - `Goal` — id, user_id, name, target_php, current_php, target_date (YYYY-MM, nullable), monthly_alloc_php, sort_order, created_at
+- `Account` — id, user_id, name, type ('bank'/'investment'/'property'/'other'), sort_order, created_at; has `snapshots` relationship
+- `AccountSnapshot` — id, account_id (FK accounts.id CASCADE), user_id (FK users.id CASCADE), month (YYYY-MM, indexed), balance, source ('manual'/'ai_parsed'), statement_hash (String(64), nullable for dedup), created_at
 
 ## Key CRUD Functions (app/db/crud.py)
 - Users: `get_user_by_username`, `get_user_by_id`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `delete_user`
@@ -55,6 +59,9 @@ scripts/             # one-off admin/migration scripts
 - Entries: `get_months`, `get_entries_for_month`, `get_all_entries`, `upsert_entry`, `delete_entries_for_month`
 - Expenses: `get_expenses(db, user_id)`, `get_expense_by_id(db, expense_id, user_id)`, `create_expense(db, user_id, **kwargs)`, `update_expense(db, expense, **kwargs)`, `delete_expense(db, expense_id, user_id)`, `reorder_expenses(db, user_id, ordered_ids)`
 - Goals: `get_goals(db, user_id)`, `get_goal_by_id(db, goal_id, user_id)`, `create_goal(db, user_id, **kwargs)`, `update_goal(db, goal, **kwargs)`, `delete_goal(db, goal_id, user_id)`, `reorder_goals(db, user_id, ordered_ids)`
+- Accounts: `get_accounts(db, user_id)`, `get_account_by_id(db, account_id, user_id)`, `create_account(db, user_id, **kwargs)`, `update_account(db, account, **kwargs)`, `delete_account(db, account_id, user_id)`, `reorder_accounts(db, user_id, ordered_ids)`
+- Snapshots: `get_snapshots_for_account(db, account_id, user_id)`, `get_all_snapshots(db, user_id)`, `get_snapshot_by_id(db, snap_id, user_id)`, `snapshot_hash_exists(db, user_id, hash)`, `upsert_snapshot(db, user_id, account_id, month, balance, source, statement_hash)`, `delete_snapshot(db, snap_id, user_id)`
+- AI parse quota: `get_ai_parse_count(db, user)` / `increment_ai_parse_count(db, user)` — daily counter in income_config JSON (ai_parse_date + ai_parse_count); resets on date change
 - AI: `get_ai_cache(db, user_id)`, `set_ai_cache(db, user_id, data_hash, html)`
 
 ## income_config JSON shape (stored on User.income_config)
@@ -66,7 +73,9 @@ scripts/             # one-off admin/migration scripts
   "phone": { "monthly_sar": 200, "ends": "2026-07" },
   "ofw_mode": true,
   "currency_symbol": "₱",
-  "income_currency": "SAR"
+  "income_currency": "SAR",
+  "ai_parse_date": "2026-05-05",
+  "ai_parse_count": 2
 }
 ```
 
@@ -166,6 +175,28 @@ python -m pytest tests/ -v
 
 Presets in UI: PAG-IBIG MP2 (₱500,000 / ₱500/mo), Emergency Fund (₱50,000 / ₱2,000/mo).
 
+## Net Worth Actions (POST /networth, action= field)
+- `add_account` — name, type → create Account; sort_order = max+1
+- `update_account` — id, name, type → update Account fields
+- `delete_account` — id → cascade-deletes account + all snapshots
+- `add_snapshot` — account_id, month (YYYY-MM), balance → upsert AccountSnapshot source='manual'
+- `delete_snapshot` — id → delete snapshot
+- `confirm_parse` — account_id, month, balance, statement_hash → upsert AccountSnapshot source='ai_parsed'
+- `reorder` — `order` = comma-separated account ids (ownership pre-validated)
+
+POST `/networth/parse` (multipart, JSON response):
+- Inline CSRF check (can't use `validate_csrf` dependency with File params)
+- Validates OpenAI key exists, daily parse quota (5/day non-admin, unlimited admin)
+- Accepts PDF/JPG/PNG/WEBP up to 10MB; PDF converted to PNG via pypdfium2
+- Returns `{"result": {balance, month, account_hint, hash}}` or `{"error": "..."}`
+
+`_net_worth_summary(accounts, snapshots, debt_entries)` → `{total_assets, total_liabilities, net_worth, trend_months, trend_values}`:
+- `total_assets` = sum of latest snapshot balance per account
+- `total_liabilities` = sum of balances from latest debt month
+- `trend_months/values` = month-by-month aggregate of all account snapshots
+
+`AI_PARSE_DAILY_LIMIT = 5` (non-admin users); admins bypass quota.
+
 ## Plan Strategy (POST /plan/strategy)
 - CSRF-guarded. Validates strategy ∈ `VALID_STRATEGIES`. Persists to `income_config["strategy"]`. 303 redirect to `/plan`.
 - GET `/plan?strategy=X` is preview-only — no DB write (CSRF-safe).
@@ -226,8 +257,10 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
-## Current State (as of 2026-05-04)
-- **Phase 1 wealth-tracker pivot shipped**: `/budget` tab combines income config + itemized monthly expenses + disposable card. Income config moved out of Settings. Nav restructured.
+## Current State (as of 2026-05-05)
+- **Phase 3 wealth-tracker shipped (feature/networth-phase3, pending merge)**: `/networth` tab, Account/AccountSnapshot models, AI statement parser, privacy mode. 171 tests passing.
+- **Phase 2 wealth-tracker shipped**: `/goals` tab + Goal model + progress bars + deposit shortcut.
+- **Phase 1 wealth-tracker shipped**: `/budget` tab combines income config + itemized monthly expenses + disposable card. Income config moved out of Settings. Nav restructured.
 - Single-user functional: login, dashboard, add/edit months, plan, remit, budget, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation, allow_prepayment toggle on non-CC debts
 - Budget UI: `/budget` — salary + cap + exchange rate + itemized Expense rows (CRUD + reorder); disposable card with negative-budget warning
@@ -265,13 +298,12 @@ python scripts/init_db.py
 4-phase pivot from debt-only → personal wealth guide. See `~/.claude/projects/.../memory/project_debt_tracker_roadmap.md`.
 - **Phase 1** (DONE 2026-05-04) — `/budget` tab + Expense model + nav restructure
 - **Phase 2** (DONE 2026-05-05) — `/goals` tab + Goal model + progress bars + deposit shortcut + 2 presets
-- **Phase 3** — `/networth` + Account/AccountSnapshot + AI statement parser (gpt-4o-mini reads PDF/CSV/image, extracts balance, user confirms; original file discarded)
+- **Phase 3** (DONE 2026-05-05, pending merge) — `/networth` + Account/AccountSnapshot + AI statement parser (gpt-4o-mini vision, pypdfium2 PDF→PNG, SHA256 dedup, 5 parses/day quota, privacy mode)
 - **Phase 4** (north star) — `/flow` Sankey allocation editor
 
 **Permanent scope guards:** ❌ live bank API sync, ❌ credential scraping, ❌ transaction-level ledger, ❌ trade execution, ❌ multi-currency portfolios beyond PHP+SAR, ❌ original PDF/image storage.
 
 ## Pending Work (next session)
-1. **Phase 3 — `/networth` + Account/AccountSnapshot + AI statement parser** — gpt-4o-mini reads PDF/CSV/image, extracts balance, user confirms; original file discarded
-2. **Multi-tenant isolation audit** — `income_config` JSON + session-keyed currency leak per-user state to globals; needed before Phase 3 ships
-3. **`reorder_expenses` / `reorder_goals` cross-tenant index drift** — same pattern as `reorder_debts`; fix together when touched
-4. **Forgot password** — lowest priority, contact admin covers it for now
+1. **Merge `feature/networth-phase3`** — present to Master Jayvee, merge to main after review; run `alembic upgrade head` in prod; run `scripts/notify_users.py` with v0.4.0 announcement
+2. **Phase 4 — `/flow` Sankey** — allocation editor, north star feature; frontend-heavy
+3. **Forgot password** — lowest priority, contact admin covers it for now
