@@ -22,6 +22,14 @@ async def get_current_user(
     if not user:
         request.session.clear()
         raise NotAuthenticated()
+
+    # Sync display prefs from DB on every request so multi-session and
+    # admin edits are reflected without requiring re-login.
+    cfg = user.income_config or {}
+    request.session["currency_symbol"] = cfg.get("currency_symbol", "₱")
+    request.session["income_currency"] = cfg.get("income_currency", "SAR")
+    request.session["ofw_mode"] = cfg.get("ofw_mode", True)
+
     return user
 
 
