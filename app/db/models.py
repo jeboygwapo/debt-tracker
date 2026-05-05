@@ -59,6 +59,34 @@ class Expense(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
 
 
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    type: Mapped[str] = mapped_column(String(32), default="bank", server_default=sa.text("'bank'"))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    snapshots: Mapped[list["AccountSnapshot"]] = relationship(back_populates="account", cascade="all, delete-orphan")
+
+
+class AccountSnapshot(Base):
+    __tablename__ = "account_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    month: Mapped[str] = mapped_column(String(7), index=True)
+    balance: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
+    source: Mapped[str] = mapped_column(String(16), default="manual", server_default=sa.text("'manual'"))
+    statement_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    account: Mapped["Account"] = relationship(back_populates="snapshots")
+
+
 class Goal(Base):
     __tablename__ = "goals"
 

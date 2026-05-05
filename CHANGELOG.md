@@ -11,6 +11,36 @@ Versioning: [Semantic Versioning](https://semver.org/) — MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.4.0] — 2026-05-05
+
+### Added
+- **`/networth` tab** (Phase 3 wealth-tracker pivot).
+- `Account` model: `name`, `type` (bank/investment/property/other), `sort_order`.
+- `AccountSnapshot` model: `account_id`, `month` (YYYY-MM), `balance`, `source` (manual/ai_parsed), `statement_hash` (SHA256 dedup).
+- Net Worth summary cards: Total Assets, Total Liabilities (from latest debt month), Net Worth.
+- Asset trend Chart.js line chart (month-by-month aggregate of all account balances).
+- Account list with latest balance, type badge, recent history inline.
+- Preset account name buttons: BDO, BPI, Metrobank, UnionBank, GCash, PAG-IBIG MP2, SSS, Stocks/UITFs, Crypto, Property.
+- Balance history table per account with source badge (manual / AI).
+- Reorder accounts ↑↓ with sticky Save Order bar.
+- **AI statement parser** (`/networth/parse`): upload PDF/JPG/PNG/WEBP → gpt-4o-mini vision extracts balance + month → preview modal → user confirms → `AccountSnapshot` saved. File NEVER written to disk. SHA256 dedup prevents double-import.
+- Separate AI parse quota: 5 parses/day per non-admin user (stored in `income_config`).
+- `app/services/statement_parser.py` — parse service with `ParseError`, `compute_file_hash`, `_extract_json`, `_validate_result`, `parse_statement`.
+- `get_ai_parse_count` / `increment_ai_parse_count` CRUD — daily counter in `income_config` JSON, resets on date change.
+- `upsert_snapshot` — upserts by (account_id, user_id, month) to handle re-imports.
+- `snapshot_hash_exists` — O(1) dedup check before calling AI.
+- Net Worth nav link between Goals and My Cards.
+- **Privacy mode** — global toggle (🔒 in avatar menu): blurs all `.card .value` and `.priv` monetary amounts site-wide. Persisted in `localStorage`. Zero backend changes — pure CSS/JS.
+- `pypdfium2` dependency — PDF → PNG conversion for AI vision (pure Python, no system deps).
+- 24 tests (8 unit + 16 integration). Total: 171 passing.
+- Alembic migration: `6cabba381573_add_accounts_and_snapshots_tables`.
+
+### Changed
+- `requirements.txt`: added `pypdfium2>=4.0.0`.
+- CLAUDE.md, README.md updated with Phase 3 models, routes, and parser flow.
+
+---
+
 ## [0.3.1] — 2026-05-05
 
 ### Security

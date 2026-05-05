@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
-from .routes import admin as admin_routes, auth, budget as budget_routes, goals as goals_routes, notifications as notifications_routes, pages, api as api_routes, debts as debts_routes
+from .routes import admin as admin_routes, auth, budget as budget_routes, goals as goals_routes, networth as networth_routes, notifications as notifications_routes, pages, api as api_routes, debts as debts_routes
 
 _MAX_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
 
@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(debts_routes.router)
     app.include_router(budget_routes.router)
     app.include_router(goals_routes.router)
+    app.include_router(networth_routes.router)
     app.include_router(admin_routes.router)
     app.include_router(notifications_routes.router)
 

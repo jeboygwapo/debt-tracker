@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% set sym = currency_symbol(request) %}
+{% set is_error = msg and ('Invalid' in msg or 'not found' in msg.lower() or 'error' in msg.lower()) %}
+
+<h2 style="margin-bottom:20px">Net Worth</h2>
+
+{% if msg %}
+<div class="alert {{ 'alert-error' if is_error else 'alert-success' }}">{{ msg }}</div>
+{% endif %}
+
+<!-- Summary cards -->
+<div class="grid" style="margin-bottom:20px">
+  <div class="card" style="border-left:3px solid #22c55e">
+    <div class="label">Total Assets</div>
+    <div class="value green priv">{{ sym }}{{ '{:,.0f}'.format(summary.total_assets) }}</div>
+  </div>
+  <div class="card" style="border-left:3px solid #ef4444">
+    <div class="label">Total Liabilities</div>
+    <div class="value red priv">{{ sym }}{{ '{:,.0f}'.format(summary.total_liabilities) }}</div>
+  </div>
+  <div class="card" style="border-left:3px solid {{ '#22c55e' if summary.net_worth >= 0 else '#ef4444' }}">
+    <div class="label">Net Worth</div>
+    <div class="value {{ 'green' if summary.net_worth >= 0 else 'red' }} priv">
+      {{ sym }}{{ '{:,.0f}'.format(summary.net_worth) }}
+    </div>
+  </div>
+</div>
+
+<!-- Net worth trend chart -->
+{% if summary.trend_months %}
+<div class="section" style="margin-bottom:20px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0">Asset Trend</h3>
+    <span style="font-size:.75rem;color:var(--muted)">{{ summary.trend_months | length }} month(s) of data</span>
+  </div>
+  <canvas id="networth-chart" height="80"></canvas>
+</div>
+{% endif %}
+
+<!-- Accounts list -->
+<div class="section">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:6px">
+    <h3 style="margin:0">Accounts</h3>
+    <button type="button" class="btn btn-primary" id="add-account-btn"
+            onclick="document.getElementById('add-account-form').style.display='block';this.style.display='none'">
+      + Add Account
+    </button>
+  </div>
+
+  <!-- Add account inline form -->
+  <div id="add-account-form" style="display:none;background:var(--bg);border-radius:8px;padding:14px;margin-bottom:14px;border:1px solid var(--border)">
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:10px">Presets:</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+      {% for preset in [('BDO Savings','bank'),('BPI Savings','bank'),('BPI Checking','bank'),
+                        ('Metrobank','bank'),('UnionBank','bank'),('GCash','bank'),
+                        ('PAG-IBIG MP2','investment'),('SSS PESO Fund','investment'),
+                        ('Stocks / UITFs','investment'),('Crypto','investment'),('Property','property')] %}
+      <button type="button" class="qbtn qbtn-blue" onclick="fillAccountPreset('{{ preset[0] }}','{{ preset[1] }}')">{{ preset[0] }}</button>
+      {% endfor %}
+    </div>
+    <form method="POST" action="/networth">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="action" value="add_account">
+      <div class="row">
+        <div>
+          <label>Name *</label>
+          <input name="name" id="acc-name" placeholder="BDO Savings" required maxlength="100">
+        </div>
+        <div>
+          <label>Type</label>
+          <select name="type" id="acc-type">
+            <option value="bank">Bank</option>
+            <option value="investment">Investment</option>
+            <option value="property">Property</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-success">Add Account</button>
+        <button type="button" class="btn btn-back"
+                onclick="document.getElementById('add-account-form').style.display='none';document.getElementById('add-account-btn').style.display=''">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+
+  {% if rows %}
+  <form method="POST" action="/networth" id="reorder-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="reorder">
+    <input type="hidden" name="order" id="order-input"
+           value="{{ accounts | map(attribute='id') | join(',') }}">
+  </form>
+
+  <div id="save-order-bar" style="display:none;position:sticky;bottom:16px;text-align:center;margin-bottom:12px">
+    <button type="button" class="btn btn-success" onclick="saveOrder()" style="box-shadow:0 4px 16px rgba(0,0,0,.4)">Save Order</button>
+    <button type="button" class="btn btn-back" onclick="location.reload()" style="margin-left:8px">Cancel</button>
+  </div>
+
+  <div id="accounts-list">
+  {% for row in rows %}
+  {% set acc = row.account %}
+  <div class="card-section" data-id="{{ acc.id }}" style="border-left-color:{{ {'bank':'#3b82f6','investment':'#22c55e','property':'#eab308','other':'#94a3b8'}[acc.type] }}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <strong>{{ acc.name }}</strong>
+          <span class="badge" style="background:var(--border);color:var(--muted)">{{ acc.type }}</span>
+          {% if not row.latest_snap %}
+          <span class="badge badge-yellow">No data yet</span>
+          {% endif %}
+        </div>
+        {% if row.latest_snap %}
+        <div style="font-size:.85rem;color:var(--muted)">
+          <span style="color:var(--text);font-weight:700;font-size:1rem" class="priv">{{ sym }}{{ '{:,.2f}'.format(row.latest_balance) }}</span>
+          &nbsp;as of <strong>{{ row.latest_month }}</strong>
+        </div>
+        {% if row.history | length > 1 %}
+        <div style="font-size:.75rem;color:var(--faint);margin-top:4px">
+          {% for snap in row.history[1:4] %}{{ snap.month }}: <span class="priv">{{ sym }}{{ '{:,.0f}'.format(snap.balance) }}</span>{% if not loop.last %} &nbsp;·&nbsp; {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap">
+        <button type="button" class="qbtn" onclick="moveAccount(this,-1)">↑</button>
+        <button type="button" class="qbtn" onclick="moveAccount(this,1)">↓</button>
+        <a href="/networth/accounts/{{ acc.id }}/edit" class="qbtn qbtn-blue">Manage</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+
+  {% else %}
+  <div style="text-align:center;padding:48px 16px">
+    <div style="font-size:2.5rem;margin-bottom:12px">🏦</div>
+    <p style="font-weight:600;color:var(--text);margin-bottom:6px">No accounts yet</p>
+    <p style="font-size:.85rem;color:var(--muted);margin-bottom:20px">Add your bank accounts, investments, and property to track your net worth.</p>
+  </div>
+  {% endif %}
+</div>
+
+<!-- AI Parse section -->
+{% if has_ai %}
+<div class="section">
+  <h3 style="margin-bottom:6px">AI Statement Parser</h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Upload a PDF or photo of a bank statement — AI extracts the balance automatically.
+    File is never stored. <strong>{{ parse_limit - parse_count }}</strong> parse{{ 's' if parse_limit - parse_count != 1 else '' }} remaining today.
+  </p>
+
+  {% if parse_count >= parse_limit %}
+  <div class="alert alert-error">Daily parse limit reached ({{ parse_limit }}/day). Resets at midnight.</div>
+  {% elif not accounts %}
+  <div class="alert" style="background:var(--border);color:var(--text)">Add an account first before importing a statement.</div>
+  {% else %}
+  <div style="background:var(--bg);border-radius:8px;padding:14px;border:1px solid var(--border)">
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <label>Account</label>
+        <select id="parse-account-id">
+          {% for acc in accounts %}
+          <option value="{{ acc.id }}">{{ acc.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Statement file (PDF / JPG / PNG)</label>
+        <input type="file" id="parse-file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="padding:6px">
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary" id="parse-btn" onclick="runParse()">Parse Statement</button>
+    <span id="parse-spinner" style="display:none;margin-left:12px;color:var(--muted);font-size:.85rem">Analysing…</span>
+  </div>
+
+  <!-- Parse preview (shown after AI returns result) -->
+  <div id="parse-preview" style="display:none;margin-top:16px;background:var(--bg);border-radius:8px;padding:16px;border:1px solid #22c55e">
+    <p style="font-weight:600;margin-bottom:12px;color:#22c55e">✓ Statement parsed — confirm to save</p>
+    <form method="POST" action="/networth" id="confirm-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="action" value="confirm_parse">
+      <input type="hidden" name="statement_hash" id="preview-hash">
+      <input type="hidden" name="account_id" id="preview-account-id">
+      <div class="row">
+        <div>
+          <label>Account</label>
+          <input id="preview-account-name" disabled style="color:var(--muted)">
+        </div>
+        <div>
+          <label>Month (YYYY-MM)</label>
+          <input name="month" id="preview-month" required pattern="\d{4}-\d{2}">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Balance ({{ sym }})</label>
+          <input name="balance" id="preview-balance" type="number" step="0.01" min="0" required class="priv">
+        </div>
+        <div>
+          <label>Detected account</label>
+          <input id="preview-hint" disabled style="color:var(--muted)">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="submit" class="btn btn-success">Save Snapshot</button>
+        <button type="button" class="btn btn-back" onclick="document.getElementById('parse-preview').style.display='none'">Cancel</button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+const _originalOrder = document.getElementById('order-input')?.value || '';
+
+function fillAccountPreset(name, type) {
+  document.getElementById('acc-name').value = name;
+  document.getElementById('acc-type').value = type;
+}
+
+function moveAccount(btn, dir) {
+  const card = btn.closest('[data-id]');
+  const list = document.getElementById('accounts-list');
+  const cards = Array.from(list.querySelectorAll('[data-id]'));
+  const idx = cards.indexOf(card);
+  const target = idx + dir;
+  if (target < 0 || target >= cards.length) return;
+  if (dir === -1) list.insertBefore(card, cards[target]);
+  else list.insertBefore(cards[target], card);
+  updateOrderInput();
+}
+
+function updateOrderInput() {
+  const ids = Array.from(document.querySelectorAll('#accounts-list [data-id]'))
+    .map(s => s.dataset.id).join(',');
+  const input = document.getElementById('order-input');
+  if (!input) return;
+  input.value = ids;
+  document.getElementById('save-order-bar').style.display = ids !== _originalOrder ? 'block' : 'none';
+}
+
+function saveOrder() { document.getElementById('reorder-form').submit(); }
+
+async function runParse() {
+  const fileInput = document.getElementById('parse-file');
+  const accountId = document.getElementById('parse-account-id')?.value;
+  if (!fileInput?.files?.[0]) { alert('Select a file first.'); return; }
+
+  const btn = document.getElementById('parse-btn');
+  const spinner = document.getElementById('parse-spinner');
+  btn.disabled = true;
+  spinner.style.display = 'inline';
+
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  form.append('csrf_token', '{{ csrf_token(request) }}');
+
+  try {
+    const resp = await fetch('/networth/parse', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert(data.error || 'Parse failed.');
+      return;
+    }
+    const r = data.result;
+    // Populate preview
+    const accSelect = document.getElementById('parse-account-id');
+    const accName = accSelect?.options[accSelect.selectedIndex]?.text || '';
+    document.getElementById('preview-account-id').value = accountId;
+    document.getElementById('preview-account-name').value = accName;
+    document.getElementById('preview-month').value = r.month || '{{ current_month }}';
+    document.getElementById('preview-balance').value = r.balance;
+    document.getElementById('preview-hint').value = r.account_hint || '—';
+    document.getElementById('preview-hash').value = r.hash;
+    document.getElementById('parse-preview').style.display = 'block';
+    document.getElementById('parse-preview').scrollIntoView({ behavior: 'smooth' });
+  } catch(e) {
+    alert('Network error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+</script>
+
+{% if summary.trend_months %}
+<script>
+(function() {
+  const ctx = document.getElementById('networth-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ summary.trend_months | tojson }},
+      datasets: [{
+        label: 'Total Assets',
+        data: {{ summary.trend_values | tojson }},
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,.1)',
+        tension: 0.3,
+        fill: true,
+        pointRadius: 3,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid') } },
+        y: {
+          grid: { color: getComputedStyle(document.documentElement).getPropertyValue('--chart-grid') },
+          ticks: { callback: v => '{{ sym }}' + v.toLocaleString() }
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+
+{% endblock %}

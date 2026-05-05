@@ -158,7 +158,19 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
   .quick-row{display:flex;flex-direction:column;align-items:stretch;margin-left:0;margin-top:6px;gap:6px}
   .quick-row .qbtn{width:100%;text-align:center;padding:6px 8px;margin-left:0}
 }
+
+/* ── Privacy mode ── */
+body.privacy-mode .priv{filter:blur(6px);user-select:none;transition:filter .2s}
+body.privacy-mode .priv:hover{filter:blur(6px)}
+body.privacy-mode .card .value{filter:blur(6px);user-select:none}
+#privacy-btn{transition:background .15s}
+body.privacy-mode #privacy-btn{background:var(--border2)!important;color:var(--text)!important}
 </style>
+<script>
+(function(){
+  if(localStorage.getItem('privacy')==='1') document.body.classList.add('privacy-mode');
+})();
+</script>
 </head>
 <body>
 <nav>
@@ -168,6 +180,7 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
     <a href="/" class="{{ 'active' if active=='dashboard' else '' }}">Dashboard</a>
     <a href="/budget" class="{{ 'active' if active=='budget' else '' }}">Budget</a>
     <a href="/goals" class="{{ 'active' if active=='goals' else '' }}">Goals</a>
+    <a href="/networth" class="{{ 'active' if active=='networth' else '' }}">Net Worth</a>
     <a href="/debts" class="{{ 'active' if active=='debts' else '' }}">My Cards</a>
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
@@ -183,6 +196,7 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
         {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">👑 Admin</a>{% endif %}
         <div class="menu-divider"></div>
         <button onclick="toggleTheme()" id="theme-btn">🌙 Toggle Theme</button>
+        <button onclick="togglePrivacy()" id="privacy-btn">🔒 Privacy Mode</button>
         <a href="/logout" style="color:#f87171">🚪 Logout</a>
       </div>
     </div>
@@ -198,6 +212,10 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
 <script>
 function toggleNav() {
   document.getElementById('nav-links').classList.toggle('open');
+}
+function togglePrivacy() {
+  const on = document.body.classList.toggle('privacy-mode');
+  localStorage.setItem('privacy', on ? '1' : '0');
 }
 function toggleAvatarMenu() {
   document.getElementById('avatar-menu').classList.toggle('open');

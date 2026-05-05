@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..config import hash_password
-from .models import AiCache, Debt, Expense, Goal, MonthlyEntry, Notification, NotificationRead, User
+from .models import Account, AccountSnapshot, AiCache, Debt, Expense, Goal, MonthlyEntry, Notification, NotificationRead, User
 
 
 # ── Users ────────────────────────────────────────────────────────────────────
@@ -156,6 +156,165 @@ async def reorder_expenses(db: AsyncSession, user_id: int, ordered_ids: list[int
             update(Expense).where(Expense.id == expense_id, Expense.user_id == user_id).values(sort_order=i)
         )
     await db.commit()
+
+
+# ── Accounts & Snapshots ──────────────────────────────────────────────────────
+
+async def get_accounts(db: AsyncSession, user_id: int) -> list[Account]:
+    result = await db.execute(
+        select(Account).where(Account.user_id == user_id).order_by(Account.sort_order, Account.id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_account_by_id(db: AsyncSession, account_id: int, user_id: int) -> Optional[Account]:
+    result = await db.execute(
+        select(Account).where(Account.id == account_id, Account.user_id == user_id)
+        .options(selectinload(Account.snapshots))
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_account(db: AsyncSession, user_id: int, **kwargs) -> Account:
+    account = Account(user_id=user_id, **kwargs)
+    db.add(account)
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+async def update_account(db: AsyncSession, account: Account, **kwargs) -> Account:
+    for k, v in kwargs.items():
+        setattr(account, k, v)
+    await db.commit()
+    await db.refresh(account)
+    return account
+
+
+async def delete_account(db: AsyncSession, account_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        delete(Account).where(Account.id == account_id, Account.user_id == user_id)
+    )
+    await db.commit()
+    return (result.rowcount or 0) > 0
+
+
+async def reorder_accounts(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
+    owned = set((await db.execute(
+        select(Account.id).where(Account.user_id == user_id)
+    )).scalars().all())
+    for i, account_id in enumerate(x for x in ordered_ids if x in owned):
+        await db.execute(
+            update(Account).where(Account.id == account_id, Account.user_id == user_id).values(sort_order=i)
+        )
+    await db.commit()
+
+
+async def get_snapshots_for_account(db: AsyncSession, account_id: int, user_id: int) -> list[AccountSnapshot]:
+    result = await db.execute(
+        select(AccountSnapshot)
+        .where(AccountSnapshot.account_id == account_id, AccountSnapshot.user_id == user_id)
+        .order_by(AccountSnapshot.month.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_snapshots(db: AsyncSession, user_id: int) -> list[AccountSnapshot]:
+    result = await db.execute(
+        select(AccountSnapshot)
+        .where(AccountSnapshot.user_id == user_id)
+        .options(selectinload(AccountSnapshot.account))
+        .order_by(AccountSnapshot.month.desc(), AccountSnapshot.account_id)
+    )
+    return list(result.scalars().all())
+
+
+async def get_snapshot_by_id(db: AsyncSession, snapshot_id: int, user_id: int) -> Optional[AccountSnapshot]:
+    result = await db.execute(
+        select(AccountSnapshot).where(
+            AccountSnapshot.id == snapshot_id, AccountSnapshot.user_id == user_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def snapshot_hash_exists(db: AsyncSession, user_id: int, statement_hash: str) -> bool:
+    result = await db.execute(
+        select(AccountSnapshot.id).where(
+            AccountSnapshot.user_id == user_id,
+            AccountSnapshot.statement_hash == statement_hash,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def upsert_snapshot(
+    db: AsyncSession,
+    account_id: int,
+    user_id: int,
+    month: str,
+    balance: float,
+    source: str = "manual",
+    statement_hash: Optional[str] = None,
+) -> AccountSnapshot:
+    result = await db.execute(
+        select(AccountSnapshot).where(
+            AccountSnapshot.account_id == account_id,
+            AccountSnapshot.user_id == user_id,
+            AccountSnapshot.month == month,
+        )
+    )
+    snap = result.scalar_one_or_none()
+    if snap:
+        snap.balance = balance
+        snap.source = source
+        if statement_hash:
+            snap.statement_hash = statement_hash
+    else:
+        snap = AccountSnapshot(
+            account_id=account_id,
+            user_id=user_id,
+            month=month,
+            balance=balance,
+            source=source,
+            statement_hash=statement_hash,
+        )
+        db.add(snap)
+    await db.commit()
+    await db.refresh(snap)
+    return snap
+
+
+async def delete_snapshot(db: AsyncSession, snapshot_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        delete(AccountSnapshot).where(
+            AccountSnapshot.id == snapshot_id, AccountSnapshot.user_id == user_id
+        )
+    )
+    await db.commit()
+    return (result.rowcount or 0) > 0
+
+
+async def get_ai_parse_count(db: AsyncSession, user: User) -> int:
+    from datetime import date
+    cfg = user.income_config or {}
+    if cfg.get("ai_parse_date") != str(date.today()):
+        return 0
+    return int(cfg.get("ai_parse_count", 0))
+
+
+async def increment_ai_parse_count(db: AsyncSession, user: User) -> int:
+    from datetime import date
+    cfg = dict(user.income_config or {})
+    today = str(date.today())
+    if cfg.get("ai_parse_date") != today:
+        cfg["ai_parse_date"] = today
+        cfg["ai_parse_count"] = 1
+    else:
+        cfg["ai_parse_count"] = int(cfg.get("ai_parse_count", 0)) + 1
+    user.income_config = cfg
+    await db.commit()
+    return cfg["ai_parse_count"]
 
 
 # ── Goals ─────────────────────────────────────────────────────────────────────
