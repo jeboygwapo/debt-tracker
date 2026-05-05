@@ -92,11 +92,12 @@ async def update_debt(db: AsyncSession, debt: Debt, **kwargs) -> Debt:
 
 
 async def reorder_debts(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
-    for i, debt_id in enumerate(ordered_ids):
+    owned = set((await db.execute(
+        select(Debt.id).where(Debt.user_id == user_id)
+    )).scalars().all())
+    for i, debt_id in enumerate(x for x in ordered_ids if x in owned):
         await db.execute(
-            update(Debt)
-            .where(Debt.id == debt_id, Debt.user_id == user_id)
-            .values(sort_order=i)
+            update(Debt).where(Debt.id == debt_id, Debt.user_id == user_id).values(sort_order=i)
         )
     await db.commit()
 
@@ -147,11 +148,12 @@ async def delete_expense(db: AsyncSession, expense_id: int, user_id: int) -> boo
 
 
 async def reorder_expenses(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
-    for i, expense_id in enumerate(ordered_ids):
+    owned = set((await db.execute(
+        select(Expense.id).where(Expense.user_id == user_id)
+    )).scalars().all())
+    for i, expense_id in enumerate(x for x in ordered_ids if x in owned):
         await db.execute(
-            update(Expense)
-            .where(Expense.id == expense_id, Expense.user_id == user_id)
-            .values(sort_order=i)
+            update(Expense).where(Expense.id == expense_id, Expense.user_id == user_id).values(sort_order=i)
         )
     await db.commit()
 
@@ -197,11 +199,12 @@ async def delete_goal(db: AsyncSession, goal_id: int, user_id: int) -> bool:
 
 
 async def reorder_goals(db: AsyncSession, user_id: int, ordered_ids: list[int]) -> None:
-    for i, goal_id in enumerate(ordered_ids):
+    owned = set((await db.execute(
+        select(Goal.id).where(Goal.user_id == user_id)
+    )).scalars().all())
+    for i, goal_id in enumerate(x for x in ordered_ids if x in owned):
         await db.execute(
-            update(Goal)
-            .where(Goal.id == goal_id, Goal.user_id == user_id)
-            .values(sort_order=i)
+            update(Goal).where(Goal.id == goal_id, Goal.user_id == user_id).values(sort_order=i)
         )
     await db.commit()
 
