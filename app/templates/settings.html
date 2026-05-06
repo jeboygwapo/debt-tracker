@@ -130,10 +130,7 @@
         {{ 'Update & Resend Verification' if user_email else 'Save & Send Verification' }}
       </button>
       {% if user_email and not is_verified %}
-      <form method="POST" style="display:inline">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-        <button type="submit" formaction="/verify/resend" class="btn btn-back" style="width:fit-content">Resend Email</button>
-      </form>
+      <button type="submit" formaction="/verify/resend" class="btn btn-back" style="width:fit-content">Resend Email</button>
       {% endif %}
     </div>
   </form>
