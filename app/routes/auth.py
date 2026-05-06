@@ -166,7 +166,7 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
 
     if email and settings.resend_api_key:
         token = secrets.token_urlsafe(32)
-        expiry = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
+        expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
         await set_user_email(db, user, email, token, expiry)
         await db.refresh(user)
         try:
@@ -187,7 +187,7 @@ async def verify_email(token: str, request: Request, db: AsyncSession = Depends(
     if not user:
         return templates.TemplateResponse(request, "verify.html", {"status": "invalid"})
 
-    if user.verify_token_expiry and datetime.now(timezone.utc) > user.verify_token_expiry.replace(tzinfo=timezone.utc):
+    if user.verify_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.verify_token_expiry:
         return templates.TemplateResponse(request, "verify.html", {"status": "expired", "user_id": user.id})
 
     await mark_user_verified(db, user)
@@ -213,7 +213,7 @@ async def resend_verification(request: Request, db: AsyncSession = Depends(get_d
         return RedirectResponse("/settings?msg=Please+wait+5+minutes+before+resending", status_code=303)
 
     token = secrets.token_urlsafe(32)
-    expiry = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
+    expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
     await set_user_email(db, user, user.email, token, expiry)
     await db.refresh(user)
 

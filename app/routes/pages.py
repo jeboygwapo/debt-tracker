@@ -674,7 +674,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
                 msg = "❌ Please wait 5 minutes before resending."
             else:
                 token = secrets.token_urlsafe(32)
-                expiry = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
+                expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
                 await set_user_email(db, user, new_email, token, expiry)
                 await db.refresh(user)
                 try:

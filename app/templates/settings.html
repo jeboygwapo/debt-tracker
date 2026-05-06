@@ -2,7 +2,7 @@
 {% block content %}
 
 <h2>Settings</h2>
-{% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+{% if msg %}<div class="alert {% if '❌' in msg %}alert-error{% else %}alert-success{% endif %}">{{ msg }}</div>{% endif %}
 
 <div class="section">
   <h3>Mode</h3>
@@ -123,7 +123,7 @@
     <input type="hidden" name="action" value="email">
     <div>
       <label>Email Address</label>
-      <input name="email" type="email" placeholder="you@example.com" value="{{ user_email or '' }}" autocomplete="email">
+      <input name="email" type="email" placeholder="you@example.com" value="{{ user_email or '' }}" autocomplete="email" required>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button type="submit" class="btn btn-primary" style="width:fit-content">
