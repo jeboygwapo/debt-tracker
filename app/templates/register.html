@@ -36,6 +36,8 @@ button:hover{background:#4f46e5}
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <label>Username</label>
     <input name="username" type="text" autofocus autocomplete="username" minlength="3">
+    <label>Email <span style="font-size:.75rem;opacity:.7">(optional — for account recovery)</span></label>
+    <input name="email" type="email" autocomplete="email" placeholder="you@example.com">
     <label>Password</label>
     <input name="password" type="password" autocomplete="new-password" minlength="12">
     <p class="hint">Minimum 12 characters</p>

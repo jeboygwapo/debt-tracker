@@ -14,7 +14,11 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text("false"))
+    email: Mapped[Optional[str]] = mapped_column(String(254), nullable=True, unique=True, index=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text("false"))
+    verify_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    verify_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     income_config: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

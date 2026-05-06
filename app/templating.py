@@ -26,9 +26,13 @@ def _income_currency(request) -> str:
 def _ofw_mode(request) -> bool:
     return request.session.get("ofw_mode", True)
 
+def _is_verified(request) -> bool:
+    return request.session.get("is_verified", True)
+
 templates.env.filters["peso"] = _currency_filter
 templates.env.globals["csrf_token"] = get_csrf_token
 templates.env.globals["currency_symbol"] = _currency_symbol
 templates.env.globals["income_currency"] = _income_currency
 templates.env.globals["ofw_mode"] = _ofw_mode
+templates.env.globals["is_verified"] = _is_verified
 templates.env.globals["app_version"] = APP_VERSION
