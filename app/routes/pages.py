@@ -17,6 +17,8 @@ from ..db.crud import (
     get_expenses,
     get_months,
     get_user_by_id,
+    get_user_by_email,
+    set_user_email,
     update_income_config,
     update_user_password,
     upsert_entry,
@@ -589,6 +591,9 @@ async def settings_get(request: Request, db: AsyncSession = Depends(get_db)):
         "msg": None,
         "is_admin": user.is_admin,
         "has_ai": bool(settings.openai_api_key),
+        "user_email": user.email,
+        "is_verified": user.is_verified,
+        "has_resend": bool(settings.resend_api_key),
     })
 
 
@@ -648,6 +653,38 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
             await update_user_password(db, user, new_pw)
             msg = "✓ Password updated."
 
+    elif action == "email":
+        import re, secrets
+        from datetime import timedelta, timezone
+        from ..services.email import send_verification_email, EmailError
+        from ..routes.auth import EMAIL_RE, VERIFY_TOKEN_TTL_HOURS, _can_send_email, _record_email_sent
+
+        new_email = str(form.get("email", "")).strip().lower()
+        if not new_email:
+            msg = "❌ Email address is required."
+        elif not EMAIL_RE.match(new_email):
+            msg = "❌ Invalid email address."
+        elif new_email == (user.email or ""):
+            msg = "That's already your email address."
+        else:
+            existing = await get_user_by_email(db, new_email)
+            if existing and existing.id != user.id:
+                msg = "❌ Email already registered to another account."
+            elif not _can_send_email(user):
+                msg = "❌ Please wait 5 minutes before resending."
+            else:
+                token = secrets.token_urlsafe(32)
+                expiry = datetime.now(timezone.utc) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
+                await set_user_email(db, user, new_email, token, expiry)
+                await db.refresh(user)
+                try:
+                    base_url = str(request.base_url).rstrip("/")
+                    await send_verification_email(new_email, user.username, token, base_url)
+                    await _record_email_sent(db, user)
+                    msg = "✓ Verification email sent. Check your inbox."
+                except EmailError:
+                    msg = "❌ Failed to send email. Check RESEND_API_KEY setting."
+
     cfg = user.income_config or {}
     return templates.TemplateResponse(request, "settings.html", {
         "active": "settings",
@@ -659,4 +696,7 @@ async def settings_post(request: Request, db: AsyncSession = Depends(get_db), _:
         "msg": msg,
         "is_admin": user.is_admin,
         "has_ai": bool(settings.openai_api_key),
+        "user_email": user.email,
+        "is_verified": user.is_verified,
+        "has_resend": bool(settings.resend_api_key),
     })

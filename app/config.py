@@ -111,6 +111,18 @@ class Settings:
         return os.environ.get("ALLOW_REGISTRATION", "false").lower() == "true"
 
     @property
+    def resend_api_key(self) -> str:
+        return os.environ.get("RESEND_API_KEY", "")
+
+    @property
+    def email_verification_required(self) -> bool:
+        return os.environ.get("EMAIL_VERIFICATION_REQUIRED", "false").lower() == "true"
+
+    @property
+    def app_base_url(self) -> str:
+        return os.environ.get("APP_BASE_URL", "https://personal-debt-tracker.fly.dev")
+
+    @property
     def debug(self) -> bool:
         return os.environ.get("FLASK_DEBUG", "false").lower() == "true"
 

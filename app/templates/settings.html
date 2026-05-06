@@ -99,6 +99,47 @@
 </div>
 
 
+<div class="section" id="email">
+  <h3>Email Address
+    {% if user_email %}
+      {% if is_verified %}
+        <span class="badge badge-green" style="font-size:.7rem;margin-left:8px">Verified</span>
+      {% else %}
+        <span class="badge badge-yellow" style="font-size:.7rem;margin-left:8px">Unverified</span>
+      {% endif %}
+    {% endif %}
+  </h3>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:14px">
+    Used for email verification and future password recovery.
+    {% if user_email and not is_verified %}
+      Check your inbox for the verification link, or request a new one below.
+    {% endif %}
+  </p>
+  {% if not has_resend %}
+  <div class="alert" style="background:var(--border);color:var(--muted)">Email sending is not configured (RESEND_API_KEY missing).</div>
+  {% else %}
+  <form method="POST" style="display:flex;flex-direction:column;gap:12px;max-width:360px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <input type="hidden" name="action" value="email">
+    <div>
+      <label>Email Address</label>
+      <input name="email" type="email" placeholder="you@example.com" value="{{ user_email or '' }}" autocomplete="email">
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button type="submit" class="btn btn-primary" style="width:fit-content">
+        {{ 'Update & Resend Verification' if user_email else 'Save & Send Verification' }}
+      </button>
+      {% if user_email and not is_verified %}
+      <form method="POST" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button type="submit" formaction="/verify/resend" class="btn btn-back" style="width:fit-content">Resend Email</button>
+      </form>
+      {% endif %}
+    </div>
+  </form>
+  {% endif %}
+</div>
+
 <div class="section">
   <h3>Change Password</h3>
   <form method="POST" style="display:flex;flex-direction:column;gap:12px;max-width:360px">

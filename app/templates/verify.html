@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debt Tracker — Email Verification</title>
+<script>document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark';</script>
+<style>
+:root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8;--inp:#0f172a}
+[data-theme="light"]{--bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--inp:#f8fafc}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:var(--surface);border-radius:12px;padding:2.5rem;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,.3);border:1px solid var(--border);text-align:center}
+h2{font-size:1.4rem;margin-bottom:.75rem}
+p{color:var(--muted);font-size:.9rem;line-height:1.5;margin-bottom:1.25rem}
+a.btn{display:inline-block;padding:.65rem 1.5rem;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;font-size:.95rem}
+a.btn:hover{background:#4f46e5}
+.icon{font-size:2.5rem;margin-bottom:1rem}
+</style>
+</head>
+<body>
+<div class="card">
+  {% if status == "success" %}
+    <div class="icon">✅</div>
+    <h2>Email Verified</h2>
+    <p>Your account is now verified. You can log in to all features.</p>
+    <a href="/" class="btn">Go to Dashboard</a>
+  {% elif status == "expired" %}
+    <div class="icon">⏰</div>
+    <h2>Link Expired</h2>
+    <p>This verification link has expired (valid for 24 hours). Request a new one from Settings.</p>
+    <a href="/settings" class="btn">Go to Settings</a>
+  {% else %}
+    <div class="icon">❌</div>
+    <h2>Invalid Link</h2>
+    <p>This verification link is invalid or has already been used.</p>
+    <a href="/" class="btn">Go to Dashboard</a>
+  {% endif %}
+</div>
+</body>
+</html>

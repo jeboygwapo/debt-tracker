@@ -11,6 +11,27 @@ Versioning: [Semantic Versioning](https://semver.org/) — MAJOR.MINOR.PATCH.
 
 ---
 
+## [0.5.0] — 2026-05-06
+
+### Added
+- **Email verification** — optional email field on registration + Settings. Resend API sends 24h verification link. `/verify/{token}` route marks account verified.
+- `email`, `is_verified`, `verify_token`, `verify_token_expiry` fields on `User` model.
+- `app/services/email.py` — async Resend API integration (`send_verification_email`).
+- Unverified banner in nav — persistent blue banner until email is verified; links to Settings.
+- `POST /verify/resend` — resend verification link with 5-minute rate limit (stored in `income_config`).
+- `EMAIL_VERIFICATION_REQUIRED` env flag (default `false`) — when `true`, soft-blocks unverified logins with banner redirect.
+- `APP_BASE_URL`, `RESEND_API_KEY`, `RESEND_FROM` env vars.
+- Email section in Settings with verified/unverified badge and resend button.
+- 4 new auth tests. Total: 148 passing.
+- Alembic migration: `356a54fd4cf9_add_email_verification_to_users`.
+
+### Changed
+- Registration form now includes optional email field.
+- `get_current_user` syncs `is_verified` to session on every request.
+- `_session_login` helper centralizes session writes in auth routes.
+
+---
+
 ## [0.4.0] — 2026-05-05
 
 ### Added

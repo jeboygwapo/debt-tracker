@@ -149,6 +149,68 @@ async def test_landing_page_authenticated_redirects(authed_client):
 
 
 @pytest.mark.anyio
+async def test_register_with_email(client):
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    try:
+        token = await get_csrf_token(client, "/register")
+        r = await client.post("/register", data={
+            "username": "emailuser_pytest",
+            "password": "NewPassword123!",
+            "confirm_password": "NewPassword123!",
+            "email": "test@example.com",
+            "csrf_token": token,
+        })
+        assert r.status_code == 200
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+
+
+@pytest.mark.anyio
+async def test_register_invalid_email(client):
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    try:
+        token = await get_csrf_token(client, "/register")
+        r = await client.post("/register", data={
+            "username": "bademailuser",
+            "password": "NewPassword123!",
+            "confirm_password": "NewPassword123!",
+            "email": "not-an-email",
+            "csrf_token": token,
+        })
+        assert r.status_code == 400
+        assert "Invalid" in r.text
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+
+
+@pytest.mark.anyio
+async def test_verify_invalid_token(client):
+    r = await client.get("/verify/invalidtoken123")
+    assert r.status_code == 200
+    assert "Invalid" in r.text or "invalid" in r.text
+
+
+@pytest.mark.anyio
+async def test_verify_valid_token(client):
+    from app.db.crud import get_user_by_username, set_user_email
+    from app.db.base import get_db
+    from datetime import datetime, timedelta, timezone
+    import secrets
+
+    async for db in get_db():
+        user = await get_user_by_username(db, "testadmin")
+        token = secrets.token_urlsafe(32)
+        expiry = datetime.now(timezone.utc) + timedelta(hours=24)
+        await set_user_email(db, user, "admin@example.com", token, expiry)
+        await db.refresh(user)
+
+        r = await client.get(f"/verify/{token}")
+        assert r.status_code == 200
+        assert "Verified" in r.text or "verified" in r.text
+        break
+
+
+@pytest.mark.anyio
 async def test_rate_limit_lockout(client):
     """After 5 failed logins the IP is locked out and returns 429."""
     from app.ratelimit import _attempts, _lock

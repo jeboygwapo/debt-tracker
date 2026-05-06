@@ -29,6 +29,7 @@ async def get_current_user(
     request.session["currency_symbol"] = cfg.get("currency_symbol", "₱")
     request.session["income_currency"] = cfg.get("income_currency", "SAR")
     request.session["ofw_mode"] = cfg.get("ofw_mode", True)
+    request.session["is_verified"] = user.is_verified
 
     return user
 

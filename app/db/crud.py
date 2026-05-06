@@ -59,6 +59,31 @@ async def delete_user(db: AsyncSession, user_id: int) -> None:
     await db.commit()
 
 
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_verify_token(db: AsyncSession, token: str) -> Optional[User]:
+    result = await db.execute(select(User).where(User.verify_token == token))
+    return result.scalar_one_or_none()
+
+
+async def set_user_email(db: AsyncSession, user: User, email: str, token: str, expiry) -> None:
+    user.email = email
+    user.is_verified = False
+    user.verify_token = token
+    user.verify_token_expiry = expiry
+    await db.commit()
+
+
+async def mark_user_verified(db: AsyncSession, user: User) -> None:
+    user.is_verified = True
+    user.verify_token = None
+    user.verify_token_expiry = None
+    await db.commit()
+
+
 # ── Debts ─────────────────────────────────────────────────────────────────────
 
 async def get_debts(db: AsyncSession, user_id: int) -> list[Debt]:
