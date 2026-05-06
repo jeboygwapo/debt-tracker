@@ -243,17 +243,22 @@ async def forgot_password_get(request: Request):
 @router.post("/forgot-password")
 async def forgot_password_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
     form = await request.form()
-    email = str(form.get("email", "")).strip().lower()
+    identifier = str(form.get("identifier", "")).strip()
 
-    # Always show "if registered you'll get an email" — don't reveal existence
     def _sent():
         return templates.TemplateResponse(request, "forgot_password.html", {"sent": True, "error": None})
 
-    if not email or not EMAIL_RE.match(email):
-        return templates.TemplateResponse(request, "forgot_password.html", {"sent": False, "error": "Enter a valid email address."}, status_code=400)
+    if not identifier:
+        return templates.TemplateResponse(request, "forgot_password.html", {"sent": False, "error": "Enter your username or email address."}, status_code=400)
 
-    user = await get_user_by_email(db, email)
-    if not user:
+    # Look up by email if it looks like one, otherwise by username
+    if EMAIL_RE.match(identifier.lower()):
+        user = await get_user_by_email(db, identifier.lower())
+    else:
+        user = await get_user_by_username(db, identifier)
+
+    # No user or no email on file — silent, don't reveal account existence
+    if not user or not user.email:
         return _sent()
 
     token = secrets.token_urlsafe(32)
