@@ -19,6 +19,8 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text("false"))
     verify_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     verify_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    reset_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     income_config: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

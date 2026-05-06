@@ -10,21 +10,26 @@ from ..config import settings, verify_password
 from ..csrf import validate_csrf
 from ..db.base import get_db
 from ..db.crud import (
+    clear_reset_token,
     create_user,
     get_user_by_email,
+    get_user_by_reset_token,
     get_user_by_username,
     get_user_by_verify_token,
     mark_user_verified,
+    set_reset_token,
     set_user_email,
+    update_user_password,
 )
 from ..ratelimit import clear_attempts, is_locked_out, record_failure, remaining_lockout
-from ..services.email import EmailError, send_verification_email
+from ..services.email import EmailError, send_password_reset_email, send_verification_email
 from ..templating import templates
 
 router = APIRouter()
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 VERIFY_TOKEN_TTL_HOURS = 24
+RESET_TOKEN_TTL_HOURS = 1
 EMAIL_RESEND_COOLDOWN_SECONDS = 300  # 5 minutes
 
 
@@ -226,3 +231,75 @@ async def resend_verification(request: Request, db: AsyncSession = Depends(get_d
         msg = "Failed+to+send+email.+Check+RESEND_API_KEY"
 
     return RedirectResponse(f"/settings?msg={msg}", status_code=303)
+
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_get(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/settings", status_code=302)
+    return templates.TemplateResponse(request, "forgot_password.html", {"sent": False, "error": None})
+
+
+@router.post("/forgot-password")
+async def forgot_password_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    form = await request.form()
+    email = str(form.get("email", "")).strip().lower()
+
+    # Always show "if registered you'll get an email" — don't reveal existence
+    def _sent():
+        return templates.TemplateResponse(request, "forgot_password.html", {"sent": True, "error": None})
+
+    if not email or not EMAIL_RE.match(email):
+        return templates.TemplateResponse(request, "forgot_password.html", {"sent": False, "error": "Enter a valid email address."}, status_code=400)
+
+    user = await get_user_by_email(db, email)
+    if not user:
+        return _sent()
+
+    token = secrets.token_urlsafe(32)
+    expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=RESET_TOKEN_TTL_HOURS)
+    await set_reset_token(db, user, token, expiry)
+
+    try:
+        base_url = str(request.base_url).rstrip("/")
+        await send_password_reset_email(email, user.username, token, base_url)
+    except EmailError:
+        pass  # silent — don't reveal send failure
+
+    return _sent()
+
+
+@router.get("/reset-password/{token}", response_class=HTMLResponse)
+async def reset_password_get(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user = await get_user_by_reset_token(db, token)
+    if not user:
+        return templates.TemplateResponse(request, "reset_password.html", {"status": "invalid", "token": token})
+    if user.reset_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_token_expiry:
+        return templates.TemplateResponse(request, "reset_password.html", {"status": "expired", "token": token})
+    return templates.TemplateResponse(request, "reset_password.html", {"status": "form", "token": token, "error": None})
+
+
+@router.post("/reset-password/{token}")
+async def reset_password_post(token: str, request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    user = await get_user_by_reset_token(db, token)
+    if not user:
+        return templates.TemplateResponse(request, "reset_password.html", {"status": "invalid", "token": token})
+    if user.reset_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_token_expiry:
+        return templates.TemplateResponse(request, "reset_password.html", {"status": "expired", "token": token})
+
+    form = await request.form()
+    new_pw = str(form.get("password", ""))
+    confirm = str(form.get("confirm_password", ""))
+
+    def _form_err(msg):
+        return templates.TemplateResponse(request, "reset_password.html", {"status": "form", "token": token, "error": msg}, status_code=400)
+
+    if len(new_pw) < 12:
+        return _form_err("Password must be at least 12 characters.")
+    if new_pw != confirm:
+        return _form_err("Passwords do not match.")
+
+    await update_user_password(db, user, new_pw)
+    await clear_reset_token(db, user)
+
+    return templates.TemplateResponse(request, "reset_password.html", {"status": "success", "token": token})

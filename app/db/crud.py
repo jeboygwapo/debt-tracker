@@ -84,6 +84,23 @@ async def mark_user_verified(db: AsyncSession, user: User) -> None:
     await db.commit()
 
 
+async def get_user_by_reset_token(db: AsyncSession, token: str) -> Optional[User]:
+    result = await db.execute(select(User).where(User.reset_token == token))
+    return result.scalar_one_or_none()
+
+
+async def set_reset_token(db: AsyncSession, user: User, token: str, expiry) -> None:
+    user.reset_token = token
+    user.reset_token_expiry = expiry
+    await db.commit()
+
+
+async def clear_reset_token(db: AsyncSession, user: User) -> None:
+    user.reset_token = None
+    user.reset_token_expiry = None
+    await db.commit()
+
+
 # ── Debts ─────────────────────────────────────────────────────────────────────
 
 async def get_debts(db: AsyncSession, user_id: int) -> list[Debt]:

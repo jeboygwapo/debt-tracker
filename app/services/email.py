@@ -38,3 +38,33 @@ async def send_verification_email(to_email: str, username: str, token: str, base
         )
         if resp.status_code not in (200, 201):
             raise EmailError(f"Resend API error {resp.status_code}: {resp.text}")
+
+
+async def send_password_reset_email(to_email: str, username: str, token: str, base_url: str) -> None:
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        raise EmailError("RESEND_API_KEY not configured")
+
+    reset_url = f"{base_url}/reset-password/{token}"
+
+    html = f"""
+    <div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+      <h2 style="margin-bottom:8px;color:#1e293b">Reset your password</h2>
+      <p style="color:#64748b;margin-bottom:24px">Hi {username}, click below to set a new password for your Debt Tracker account.</p>
+      <a href="{reset_url}"
+         style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">
+        Reset Password
+      </a>
+      <p style="color:#94a3b8;font-size:.8rem;margin-top:24px">Link expires in 1 hour. If you didn't request this, ignore this email.</p>
+      <p style="color:#94a3b8;font-size:.75rem;margin-top:8px">Or copy this link: {reset_url}</p>
+    </div>
+    """
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": FROM_ADDRESS, "to": [to_email], "subject": "Reset your Debt Tracker password", "html": html},
+        )
+        if resp.status_code not in (200, 201):
+            raise EmailError(f"Resend API error {resp.status_code}: {resp.text}")
