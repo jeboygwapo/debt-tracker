@@ -163,8 +163,8 @@ input[type=checkbox],input[type=radio]{width:auto;cursor:pointer;accent-color:#3
 body.privacy-mode .priv{filter:blur(6px);user-select:none;transition:filter .2s}
 body.privacy-mode .priv:hover{filter:blur(6px)}
 body.privacy-mode .card .value{filter:blur(6px);user-select:none}
-#privacy-btn{transition:background .15s}
-body.privacy-mode #privacy-btn{background:var(--border2)!important;color:var(--text)!important}
+#privacy-btn{transition:background .15s,border-color .15s}
+body.privacy-mode #privacy-btn{background:#1e3a5f!important;border-color:#3b82f6!important;color:#93c5fd!important}
 </style>
 <script>
 (function(){
@@ -185,6 +185,7 @@ body.privacy-mode #privacy-btn{background:var(--border2)!important;color:var(--t
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     {% if request.session.get('user_id') %}
+    <button onclick="togglePrivacy()" id="privacy-btn" title="Toggle Privacy Mode" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:.8rem;transition:background .15s">🔒</button>
     <div class="avatar-wrapper">
       <button class="avatar-btn" id="avatar-btn" onclick="toggleAvatarMenu()" title="Menu">
         {{ request.session.get('username', 'U')[0].upper() }}
@@ -196,7 +197,6 @@ body.privacy-mode #privacy-btn{background:var(--border2)!important;color:var(--t
         {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">👑 Admin</a>{% endif %}
         <div class="menu-divider"></div>
         <button onclick="toggleTheme()" id="theme-btn">🌙 Toggle Theme</button>
-        <button onclick="togglePrivacy()" id="privacy-btn">🔒 Privacy Mode</button>
         <a href="/logout" style="color:#f87171">🚪 Logout</a>
       </div>
     </div>

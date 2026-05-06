@@ -1,3 +1,11 @@
+== 0.5.0 ==
+- Email verification: add your email in Settings to secure your account
+- Forgot password: reset via email from the login page
+- Net Worth: asset trend chart + AI statement parser
+- Goals: track savings targets with progress bars
+- Budget: itemized monthly expenses + disposable income card
+- Privacy mode: now in the top nav for quick access
+
 == 0.1.0 ==
 - Notifications: get updates from us directly in the app
 - Cleaner nav: Settings, Admin, and Logout moved into profile menu
