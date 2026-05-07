@@ -44,7 +44,7 @@ scripts/             # one-off admin/migration scripts
 ```
 
 ## DB Models (SQLAlchemy mapped_column style)
-- `User` — id, username, password_hash, is_admin, income_config (JSONB), created_at
+- `User` — id, username, password_hash, is_admin, is_verified, email, verify_token, verify_token_expiry, reset_token, reset_token_expiry, income_config (JSONB), created_at
 - `Debt` — id, user_id, name, type, apr_monthly_pct, note, is_fixed, fixed_monthly, fixed_ends (YYYY-MM), fixed_reduced_monthly, fixed_reduced_threshold, sort_order
 - `MonthlyEntry` — id, user_id, debt_id, month (YYYY-MM), balance, min_due, payment, paid_on, due_date, note
 - `AiCache` — user_id (PK), data_hash, html, generated_at
@@ -54,7 +54,7 @@ scripts/             # one-off admin/migration scripts
 - `AccountSnapshot` — id, account_id (FK accounts.id CASCADE), user_id (FK users.id CASCADE), month (YYYY-MM, indexed), balance, source ('manual'/'ai_parsed'), statement_hash (String(64), nullable for dedup), created_at
 
 ## Key CRUD Functions (app/db/crud.py)
-- Users: `get_user_by_username`, `get_user_by_id`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `delete_user`
+- Users: `get_user_by_username`, `get_user_by_id`, `get_user_by_email`, `get_user_by_verify_token`, `get_user_by_reset_token`, `get_all_users`, `create_user`, `update_user_password`, `update_income_config`, `set_user_email`, `mark_user_verified`, `set_reset_token`, `clear_reset_token`, `delete_user`
 - Debts: `get_debts(db, user_id)`, `get_debt_by_id(db, debt_id, user_id)`, `create_debt(db, user_id, **kwargs)`, `update_debt(db, debt, **kwargs)`, `delete_debt(db, debt_id, user_id)`, `reorder_debts(db, user_id, ordered_ids)`
 - Entries: `get_months`, `get_entries_for_month`, `get_all_entries`, `upsert_entry`, `delete_entries_for_month`
 - Expenses: `get_expenses(db, user_id)`, `get_expense_by_id(db, expense_id, user_id)`, `create_expense(db, user_id, **kwargs)`, `update_expense(db, expense, **kwargs)`, `delete_expense(db, expense_id, user_id)`, `reorder_expenses(db, user_id, ordered_ids)`
@@ -137,10 +137,27 @@ python -m pytest tests/ -v
 
 ## Security & Hardening
 - Login rate limit: `app/ratelimit.py` — 5 attempts/15min per IP, 15min lockout, in-memory dict + threading.Lock
-- Session: 8-hour `max_age`, `https_only=True` in production, `same_site=lax`
+- Forgot-password rate limit: same file — `ns_is_limited(request, "forgot-password")` / `ns_record(request, "forgot-password")` — 5 req/15min per IP, silent 200 on hit (don't reveal block)
+- Namespace rate limit API: `ns_is_limited(request, namespace)`, `ns_record(request, namespace)` — use for any route needing independent bucket from login
+- Session: **2-hour** `max_age`, `https_only=True` in production, `same_site=lax`
 - Request size: `RequestSizeLimitMiddleware` — 413 if `Content-Length > 1MB`
 - `/docs` disabled when `APP_ENV=production`
 - Sentry: optional, init via `SENTRY_DSN` env var in `create_app()`, silent if SDK missing
+
+## Auth Routes (app/routes/auth.py)
+- `GET/POST /login` — session auth, rate-limited (5/15min), bcrypt verify
+- `GET /logout` — clears session
+- `GET/POST /register` — gated by `ALLOW_REGISTRATION` env var
+- `GET /verify/{token}` — email verification; states: invalid/expired/success
+- `POST /verify/resend` — 5-min cooldown per user (`verify_email_sent_at` in income_config)
+- `GET/POST /forgot-password` — accepts username OR email; silent 200 on unknown identifier; rate-limited (5/15min, namespaced)
+- `GET/POST /reset-password/{token}` — 1-hour token TTL; states: invalid/expired/form/success; clears token on success
+
+**Email** — `send_verification_email` + `send_password_reset_email` in `app/services/email.py` via Resend API. `RESEND_API_KEY` required. FROM domain must be verified in Resend dashboard.
+
+**Token TTLs:** `VERIFY_TOKEN_TTL_HOURS = 24`, `RESET_TOKEN_TTL_HOURS = 1`, `EMAIL_RESEND_COOLDOWN_SECONDS = 300`
+
+**Timezone rule:** ALL datetime constructions use `datetime.now(timezone.utc).replace(tzinfo=None)` before storing — asyncpg rejects tz-aware datetimes into `TIMESTAMP WITHOUT TIME ZONE` columns.
 
 ## Settings Actions (POST /settings, action= field)
 - `mode` — toggle `ofw_mode` bool in income_config + session
@@ -257,10 +274,18 @@ python scripts/init_db.py
 - Validations: username ≥3 chars, password ≥12 chars, confirm match, no duplicate usernames
 - Login page shows "Register" link only when `allow_registration=True` passed in context
 
-## Current State (as of 2026-05-05)
-- **Phase 3 wealth-tracker shipped (feature/networth-phase3, pending merge)**: `/networth` tab, Account/AccountSnapshot models, AI statement parser, privacy mode. 171 tests passing.
-- **Phase 2 wealth-tracker shipped**: `/goals` tab + Goal model + progress bars + deposit shortcut.
-- **Phase 1 wealth-tracker shipped**: `/budget` tab combines income config + itemized monthly expenses + disposable card. Income config moved out of Settings. Nav restructured.
+## Current State (as of 2026-05-07)
+- **All wealth-tracker phases shipped and live on Fly.io**
+- **Email + password reset shipped (v0.5.0)**: email verification, forgot/reset password via email, privacy mode in top nav, net worth chart blur, CHANGELOG notification pipeline fixed
+- Phase 3: `/networth` + Account/AccountSnapshot + AI statement parser + privacy mode
+- Phase 2: `/goals` + Goal model + progress bars + deposit shortcut
+- Phase 1: `/budget` + Expense model + income config restructure
+- Nav order (left→right): Dashboard → My Cards → Budget → Payoff Plan → Remittance → Goals → Net Worth
+- Top nav: 🔒 privacy toggle + 🔔 bell (with floating badge) before avatar/dropdown
+- Dropdown: Settings, Admin (if admin), Toggle Theme, Logout
+- Session `max_age=7200` (2 hours)
+- `CHANGELOG` + `scripts/post_deploy.py` — version-keyed entries, fires in-app notification on deploy if version not already posted. `APP_VERSION` env var must be set (no default in Dockerfile ARG)
+- `dependencies.py` syncs `currency_symbol`, `income_currency`, `ofw_mode`, `is_verified`, `has_email` to session on every request
 - Single-user functional: login, dashboard, add/edit months, plan, remit, budget, settings, AI analysis
 - Debt UI: `/debts` list + add, `/debts/{id}/edit`, delete with type-name confirmation, allow_prepayment toggle on non-CC debts
 - Budget UI: `/budget` — salary + cap + exchange rate + itemized Expense rows (CRUD + reorder); disposable card with negative-budget warning
@@ -274,12 +299,12 @@ python scripts/init_db.py
 - OFW mode: toggle in Settings → Mode; when off, `rate=1.0`, budget stays in local currency, remit → Budget Planner, income currency select + rate card hidden; `ofw_mode` stored in `income_config` + session
 - Empty states: Dashboard and Plan pages show CTA cards when no months/data exist
 - Input validation: balance/min_due/payment fields have `type=number min=0` to block negatives
-- Login: shows real "Create Account" link when `allow_registration=True`, disabled Coming Soon button otherwise
+- Login: shows real "Create Account" link when `allow_registration=True`, disabled Coming Soon button otherwise; "Forgot password?" link below Sign In button
 - Landing page: `/welcome` — public, unauthenticated entry point; authenticated users redirect to `/`; unauthenticated hits on `/` redirect to `/welcome` via `_redirect_login()`
 - Progress bar: dashboard shows `pct_paid`/`paid_off`/`peak_debt` — computed from `max(hist_totals)` vs `total_now`
 - Confetti: canvas-based, fires on card `done=True` and pct milestones 25/50/75/100; localStorage prevents re-trigger per month
 - PDF report: `GET /report/{month}` — clean print-ready HTML, no deps; "Print Report" button opens in new tab from dashboard
-- Theme persistence: inline `<script>` in `<head>` on all standalone pages (login, register, landing) applies localStorage theme before render — eliminates flash
+- Theme persistence: inline `<script>` in `<head>` on all standalone pages (login, register, landing, forgot_password, reset_password) applies localStorage theme before render
 - GitHub Actions: CI (pytest) + CD (GHCR push on main merge)
 - AI rate limiting: 3 calls/user/day (configurable via AI_DAILY_LIMIT), admins exempt, cached hits free
 - asyncpg SSL disabled for Fly.io internal network (connect_args={"ssl": False} in app/db/base.py)
@@ -304,6 +329,7 @@ python scripts/init_db.py
 **Permanent scope guards:** ❌ live bank API sync, ❌ credential scraping, ❌ transaction-level ledger, ❌ trade execution, ❌ multi-currency portfolios beyond PHP+SAR, ❌ original PDF/image storage.
 
 ## Pending Work (next session)
-1. **Merge `feature/networth-phase3`** — present to Master Jayvee, merge to main after review; run `alembic upgrade head` in prod; run `scripts/notify_users.py` with v0.4.0 announcement
-2. **Phase 4 — `/flow` Sankey** — allocation editor, north star feature; frontend-heavy
-3. **Forgot password** — lowest priority, contact admin covers it for now
+1. **Push to GitHub** — CI/CD broken, GHCR image stale; all recent commits local only
+2. **Tests** — zero coverage on `/forgot-password`, `/reset-password`, `/verify` routes
+3. **Phase 4 — `/flow` Sankey** — allocation editor, north star feature; frontend-heavy
+4. **Account lockout on reset attempts** — currently no lockout on `/reset-password/{token}` brute force

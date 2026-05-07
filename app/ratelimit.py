@@ -5,6 +5,7 @@ from threading import Lock
 
 _lock = Lock()
 _attempts: dict[str, list[float]] = defaultdict(list)
+_ns_attempts: dict[tuple[str, str], list[float]] = defaultdict(list)
 
 MAX_ATTEMPTS = 5
 WINDOW_SECONDS = 900   # 15 minutes
@@ -65,3 +66,26 @@ def remaining_lockout(request) -> int:
             return 0
         oldest = min(recent)
         return max(0, int(LOCKOUT_SECONDS - (now - oldest)))
+
+
+# Namespaced rate limit — separate bucket per (namespace, ip).
+# Used for routes like /forgot-password that need independent limits.
+NS_MAX_ATTEMPTS = 5
+NS_WINDOW_SECONDS = 900  # 15 minutes
+
+
+def ns_is_limited(request, namespace: str) -> bool:
+    key = (namespace, _client_ip(request))
+    now = time.monotonic()
+    with _lock:
+        recent = [t for t in _ns_attempts[key] if now - t < NS_WINDOW_SECONDS]
+        _ns_attempts[key] = recent
+        return len(recent) >= NS_MAX_ATTEMPTS
+
+
+def ns_record(request, namespace: str) -> None:
+    key = (namespace, _client_ip(request))
+    now = time.monotonic()
+    with _lock:
+        _ns_attempts[key].append(now)
+        _ns_attempts[key] = [t for t in _ns_attempts[key] if now - t < NS_WINDOW_SECONDS]

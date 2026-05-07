@@ -21,7 +21,7 @@ from ..db.crud import (
     set_user_email,
     update_user_password,
 )
-from ..ratelimit import clear_attempts, is_locked_out, record_failure, remaining_lockout
+from ..ratelimit import clear_attempts, is_locked_out, ns_is_limited, ns_record, record_failure, remaining_lockout
 from ..services.email import EmailError, send_password_reset_email, send_verification_email
 from ..templating import templates
 
@@ -242,22 +242,25 @@ async def forgot_password_get(request: Request):
 
 @router.post("/forgot-password")
 async def forgot_password_post(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
-    form = await request.form()
-    identifier = str(form.get("identifier", "")).strip()
-
     def _sent():
         return templates.TemplateResponse(request, "forgot_password.html", {"sent": True, "error": None})
+
+    if ns_is_limited(request, "forgot-password"):
+        return _sent()
+
+    form = await request.form()
+    identifier = str(form.get("identifier", "")).strip()
 
     if not identifier:
         return templates.TemplateResponse(request, "forgot_password.html", {"sent": False, "error": "Enter your username or email address."}, status_code=400)
 
-    # Look up by email if it looks like one, otherwise by username
+    ns_record(request, "forgot-password")
+
     if EMAIL_RE.match(identifier.lower()):
         user = await get_user_by_email(db, identifier.lower())
     else:
         user = await get_user_by_username(db, identifier)
 
-    # No user or no email on file — silent, don't reveal account existence
     if not user or not user.email:
         return _sent()
 
@@ -267,9 +270,9 @@ async def forgot_password_post(request: Request, db: AsyncSession = Depends(get_
 
     try:
         base_url = str(request.base_url).rstrip("/")
-        await send_password_reset_email(email, user.username, token, base_url)
+        await send_password_reset_email(user.email, user.username, token, base_url)
     except EmailError:
-        pass  # silent — don't reveal send failure
+        pass
 
     return _sent()
 
