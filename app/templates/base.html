@@ -178,21 +178,20 @@ body.privacy-mode #privacy-btn{background:#1e3a5f!important;border-color:#3b82f6
   <button class="nav-toggle" id="nav-toggle" onclick="toggleNav()" aria-label="Menu">☰</button>
   <div class="nav-links" id="nav-links">
     <a href="/" class="{{ 'active' if active=='dashboard' else '' }}">Dashboard</a>
-    <a href="/budget" class="{{ 'active' if active=='budget' else '' }}">Budget</a>
-    <a href="/goals" class="{{ 'active' if active=='goals' else '' }}">Goals</a>
-    <a href="/networth" class="{{ 'active' if active=='networth' else '' }}">Net Worth</a>
     <a href="/debts" class="{{ 'active' if active=='debts' else '' }}">My Cards</a>
+    <a href="/budget" class="{{ 'active' if active=='budget' else '' }}">Budget</a>
     <a href="/plan" class="{{ 'active' if active=='plan' else '' }}">Payoff Plan</a>
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
+    <a href="/goals" class="{{ 'active' if active=='goals' else '' }}">Goals</a>
+    <a href="/networth" class="{{ 'active' if active=='networth' else '' }}">Net Worth</a>
     {% if request.session.get('user_id') %}
+    <a href="/notifications" id="notif-nav-btn" title="Notifications" style="position:relative;padding:4px 9px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;color:var(--muted);text-decoration:none;transition:background .15s">🔔<span id="notif-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;border-radius:999px;font-size:.55rem;font-weight:700;padding:1px 4px;min-width:14px;text-align:center">0</span></a>
     <button onclick="togglePrivacy()" id="privacy-btn" title="Toggle Privacy Mode" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:.8rem;transition:background .15s">🔒</button>
     <div class="avatar-wrapper">
       <button class="avatar-btn" id="avatar-btn" onclick="toggleAvatarMenu()" title="Menu">
         {{ request.session.get('username', 'U')[0].upper() }}
-        <span class="avatar-notif" id="notif-badge">0</span>
       </button>
       <div class="avatar-menu" id="avatar-menu">
-        <a href="/notifications" class="{{ 'active' if active=='notifications' else '' }}">🔔 Notifications <span id="notif-count" style="margin-left:auto;background:#ef4444;color:#fff;border-radius:999px;font-size:.6rem;font-weight:700;padding:1px 6px;display:none">0</span></a>
         <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">⚙️ Settings</a>
         {% if request.session.get('is_admin') %}<a href="/admin" class="{{ 'active' if active=='admin' else '' }}" style="color:#eab308">👑 Admin</a>{% endif %}
         <div class="menu-divider"></div>
@@ -206,10 +205,10 @@ body.privacy-mode #privacy-btn{background:#1e3a5f!important;border-color:#3b82f6
   </div>
 </nav>
 <div class="page">
-{% if request.session.get('user_id') and not request.session.get('is_verified', true) %}
+{% if request.session.get('user_id') and request.session.get('has_email') and not request.session.get('is_verified', true) %}
 <div style="background:#1e3a5f;border-bottom:1px solid #3b82f6;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.85rem">
-  <span style="color:#93c5fd">📧 <strong>Your email is not verified.</strong> Add your email in Settings to secure your account and enable password recovery.</span>
-  <a href="/settings#email" style="color:#60a5fa;text-decoration:underline;white-space:nowrap">Add email →</a>
+  <span style="color:#93c5fd">📧 <strong>Your email is not verified.</strong> Check your inbox for the verification link.</span>
+  <a href="/settings#email" style="color:#60a5fa;text-decoration:underline;white-space:nowrap">Resend →</a>
 </div>
 {% endif %}
 {% block content %}{% endblock %}
@@ -238,17 +237,14 @@ document.addEventListener('click', function(e) {
 });
 (function pollNotifications() {
   const badge = document.getElementById('notif-badge');
-  const count = document.getElementById('notif-count');
   if (!badge) return;
   function check() {
     fetch('/api/notifications/unread').then(r => r.json()).then(d => {
       if (d.count > 0) {
         badge.textContent = d.count;
         badge.style.display = 'inline';
-        if (count) { count.textContent = d.count; count.style.display = 'inline'; }
       } else {
         badge.style.display = 'none';
-        if (count) count.style.display = 'none';
       }
     }).catch(() => {});
   }
@@ -259,7 +255,7 @@ function toggleTheme() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';
   html.dataset.theme = isDark ? 'light' : 'dark';
-  document.getElementById('theme-btn').textContent = isDark ? '☀️' : '🌙';
+  document.getElementById('theme-btn').textContent = (isDark ? '☀️' : '🌙') + ' Toggle Theme';
   localStorage.setItem('theme', html.dataset.theme);
   if (typeof buildTrend === 'function') buildTrend(localStorage.getItem('trendType') || 'line');
   if (typeof buildDonut === 'function') buildDonut(localStorage.getItem('donutType') || 'doughnut');
@@ -269,7 +265,7 @@ function toggleTheme() {
   document.documentElement.dataset.theme = saved;
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('theme-btn');
-    if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
+    if (btn) btn.textContent = (saved === 'dark' ? '🌙' : '☀️') + ' Toggle Theme';
   });
 })();
 </script>
