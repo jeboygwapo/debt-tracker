@@ -21,7 +21,7 @@ from ..db.crud import (
     set_user_email,
     update_user_password,
 )
-from ..ratelimit import clear_attempts, is_locked_out, ns_is_limited, ns_record, record_failure, remaining_lockout
+from ..ratelimit import clear_attempts, is_locked_out, ns_clear, ns_is_limited, ns_record, record_failure, remaining_lockout
 from ..services.email import EmailError, send_password_reset_email, send_verification_email
 from ..templating import templates
 
@@ -295,11 +295,22 @@ async def reset_password_post(token: str, request: Request, db: AsyncSession = D
     if user.reset_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_token_expiry:
         return templates.TemplateResponse(request, "reset_password.html", {"status": "expired", "token": token})
 
+    # Rate limit applies only to form validation failures — invalid/expired token
+    # branches above terminate before this point and do not consume the bucket.
+    # Token entropy (256-bit) makes POST enumeration of unknown tokens infeasible.
+    if ns_is_limited(request, "reset-password"):
+        return templates.TemplateResponse(
+            request, "reset_password.html",
+            {"status": "form", "token": token, "error": "Too many attempts. Please try again later."},
+            status_code=429,
+        )
+
     form = await request.form()
     new_pw = str(form.get("password", ""))
     confirm = str(form.get("confirm_password", ""))
 
     def _form_err(msg):
+        ns_record(request, "reset-password")
         return templates.TemplateResponse(request, "reset_password.html", {"status": "form", "token": token, "error": msg}, status_code=400)
 
     if len(new_pw) < 12:
@@ -307,7 +318,15 @@ async def reset_password_post(token: str, request: Request, db: AsyncSession = D
     if new_pw != confirm:
         return _form_err("Passwords do not match.")
 
-    await update_user_password(db, user, new_pw)
-    await clear_reset_token(db, user)
+    try:
+        await update_user_password(db, user, new_pw)
+        await clear_reset_token(db, user)
+    except Exception:
+        return templates.TemplateResponse(
+            request, "reset_password.html",
+            {"status": "form", "token": token, "error": "Something went wrong. Please try again."},
+            status_code=500,
+        )
+    ns_clear(request, "reset-password")
 
     return templates.TemplateResponse(request, "reset_password.html", {"status": "success", "token": token})

@@ -89,3 +89,9 @@ def ns_record(request, namespace: str) -> None:
     with _lock:
         _ns_attempts[key].append(now)
         _ns_attempts[key] = [t for t in _ns_attempts[key] if now - t < NS_WINDOW_SECONDS]
+
+
+def ns_clear(request, namespace: str) -> None:
+    key = (namespace, _client_ip(request))
+    with _lock:
+        _ns_attempts.pop(key, None)
