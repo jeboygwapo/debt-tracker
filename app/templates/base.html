@@ -184,6 +184,7 @@ body.privacy-mode #privacy-btn{background:#1e3a5f!important;border-color:#3b82f6
     <a href="/remit" class="{{ 'active' if active=='remit' else '' }}">Remittance</a>
     <a href="/goals" class="{{ 'active' if active=='goals' else '' }}">Goals</a>
     <a href="/networth" class="{{ 'active' if active=='networth' else '' }}">Net Worth</a>
+    <a href="/flow" class="{{ 'active' if active=='flow' else '' }}">Flow</a>
     {% if request.session.get('user_id') %}
     <a href="/notifications" id="notif-nav-btn" title="Notifications" style="position:relative;padding:4px 9px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;color:var(--muted);text-decoration:none;transition:background .15s">🔔<span id="notif-badge" style="display:none;position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;border-radius:999px;font-size:.55rem;font-weight:700;padding:1px 4px;min-width:14px;text-align:center">0</span></a>
     <button onclick="togglePrivacy()" id="privacy-btn" title="Toggle Privacy Mode" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 9px;cursor:pointer;font-size:.8rem;transition:background .15s">🔒</button>
@@ -259,6 +260,7 @@ function toggleTheme() {
   localStorage.setItem('theme', html.dataset.theme);
   if (typeof buildTrend === 'function') buildTrend(localStorage.getItem('trendType') || 'line');
   if (typeof buildDonut === 'function') buildDonut(localStorage.getItem('donutType') || 'doughnut');
+  if (typeof buildSankey === 'function') buildSankey();
 }
 (function() {
   const saved = localStorage.getItem('theme') || 'dark';
