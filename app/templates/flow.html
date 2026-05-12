@@ -96,11 +96,18 @@
 <div class="section" style="margin-bottom:20px" id="flow-ai-section">
   <h3 style="margin-bottom:12px">
     AI Flow Analysis
-    <button class="qbtn" onclick="loadFlowSuggestion(true)"
-            style="margin-left:8px;font-size:.75rem;padding:2px 10px">Refresh</button>
+    <span id="flow-ai-counter"
+          style="margin-left:8px;font-size:.75rem;color:var(--muted);font-weight:normal">
+      {% if ai_remaining is not none %}{{ ai_remaining }}/{{ ai_limit }} left today{% endif %}
+    </span>
   </h3>
   <div id="flow-ai-content" style="font-size:.88rem;color:var(--text2);line-height:1.7">
-    <span style="color:var(--muted)">Loading...</span>
+    <button class="qbtn" id="flow-ai-btn"
+            onclick="loadFlowSuggestion(false)"
+            {% if ai_remaining == 0 %}disabled title="Daily limit reached"{% endif %}
+            style="padding:6px 16px;font-size:.82rem">
+      Analyze Cash Flow
+    </button>
   </div>
 </div>
 {% endif %}
@@ -194,15 +201,40 @@ function buildSankey() {
 
 async function loadFlowSuggestion(force = false) {
   const el = document.getElementById('flow-ai-content');
+  const btn = document.getElementById('flow-ai-btn');
+  const counter = document.getElementById('flow-ai-counter');
   if (!el) return;
-  el.innerHTML = '<span style="color:var(--muted)">Analyzing your cash flow...</span>';
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Analyzing...'; }
+  el.innerHTML = '';
+
+  const loadingSpan = document.createElement('span');
+  loadingSpan.style.color = 'var(--muted)';
+  loadingSpan.textContent = 'Analyzing your cash flow...';
+  el.appendChild(loadingSpan);
+
   try {
     const resp = await fetch('/api/flow/suggestion' + (force ? '?force=1' : ''));
     const data = await resp.json();
+
+    if (data.remaining !== null && data.remaining !== undefined && counter) {
+      const limit = {{ ai_limit }};
+      counter.textContent = `${data.remaining}/${limit} left today`;
+    }
+
+    el.innerHTML = '';
     if (data.html) {
       el.innerHTML = data.html;
+      if (btn && data.remaining !== null && data.remaining !== undefined) {
+        if (data.remaining > 0) {
+          btn.textContent = 'Refresh';
+          btn.onclick = () => loadFlowSuggestion(true);
+          btn.disabled = false;
+          btn.style.marginTop = '10px';
+          el.appendChild(btn);
+        }
+      }
     } else if (data.error) {
-      el.innerHTML = '';
       const errSpan = document.createElement('span');
       errSpan.style.color = '#f87171';
       errSpan.textContent = data.error;
@@ -214,15 +246,25 @@ async function loadFlowSuggestion(force = false) {
         a.textContent = ' ' + data.error_link.text;
         el.appendChild(a);
       }
+      if (btn && !btn.isConnected) {
+        btn.textContent = 'Analyze Cash Flow';
+        btn.onclick = () => loadFlowSuggestion(false);
+        btn.disabled = data.remaining === 0;
+        el.appendChild(btn);
+      }
     }
   } catch (e) {
-    el.innerHTML = '<span style="color:#f87171">Failed to load. Try refreshing.</span>';
+    el.innerHTML = '';
+    const errSpan = document.createElement('span');
+    errSpan.style.color = '#f87171';
+    errSpan.textContent = 'Failed to load. Try refreshing.';
+    el.appendChild(errSpan);
+    if (btn) { btn.textContent = 'Analyze Cash Flow'; btn.disabled = false; }
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   if (SANKEY_NODES.length) buildSankey();
-  {% if has_ai %}loadFlowSuggestion(false);{% endif %}
 });
 </script>
 

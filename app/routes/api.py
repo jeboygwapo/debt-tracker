@@ -151,7 +151,12 @@ async def flow_suggestion(request: Request, force: str = "0", db: AsyncSession =
         and bool(cache_html)
     )
     if cache_hit:
-        return JSONResponse({"html": cache_html, "cached": True})
+        if not user.is_admin:
+            daily_count = await get_ai_daily_count(db, user.id)
+            remaining = max(0, settings.ai_daily_limit - daily_count)
+        else:
+            remaining = None
+        return JSONResponse({"html": cache_html, "cached": True, "remaining": remaining})
 
     from ..config import load_env_file
     load_env_file(settings.env_file)
@@ -233,4 +238,6 @@ async def flow_suggestion(request: Request, force: str = "0", db: AsyncSession =
     await update_income_config(db, user, cfg_user)
     await set_ai_cache(db, user.id, current_hash, "")
 
-    return JSONResponse({"html": formatted_html, "cached": False})
+    new_count = await get_ai_daily_count(db, user.id)
+    remaining = None if user.is_admin else max(0, settings.ai_daily_limit - new_count)
+    return JSONResponse({"html": formatted_html, "cached": False, "remaining": remaining})

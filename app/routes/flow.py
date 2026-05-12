@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db.adapter import build_data_dict
 from ..db.base import get_db
-from ..db.crud import get_ai_cache, get_all_entries, get_debts, get_expenses, get_goals
+from ..db.crud import get_ai_cache, get_ai_daily_count, get_all_entries, get_debts, get_expenses, get_goals
 from ..dependencies import NotAuthenticated, get_current_user
 from ..services.planner import _active_expense_sar, latest_month
 from ..templating import templates
@@ -99,6 +99,14 @@ async def flow_get(request: Request, db: AsyncSession = Depends(get_db)):
     if surplus_php > 0:
         links.append({"source": "income", "target": "surplus", "value": surplus_php})
 
+    has_ai = bool(settings.openai_api_key)
+    ai_limit = settings.ai_daily_limit
+    if has_ai and not user.is_admin:
+        daily_count = await get_ai_daily_count(db, user.id)
+        ai_remaining = max(0, ai_limit - daily_count)
+    else:
+        ai_remaining = ai_limit
+
     return templates.TemplateResponse(request, "flow.html", {
         "request": request,
         "active": "flow",
@@ -111,7 +119,9 @@ async def flow_get(request: Request, db: AsyncSession = Depends(get_db)):
         "target_month": target_month,
         "sankey_nodes": json.dumps(nodes),
         "sankey_links": json.dumps(links),
-        "has_ai": bool(settings.openai_api_key),
+        "has_ai": has_ai,
+        "ai_remaining": ai_remaining,
+        "ai_limit": ai_limit,
         "has_data": bool(latest_entries),
         "goals": goals,
         "msg": request.query_params.get("msg"),
