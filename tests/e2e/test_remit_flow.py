@@ -15,9 +15,15 @@ def _seed_month(page, base_url, month: str = "2026-10"):
     page.goto(f"{base_url}/add")
     page.wait_for_load_state("networkidle")
     page.fill('input[name="month"]', month)
+    # Statement tab is active by default — balance and min_due are visible here.
     page.fill('input[name="d_0_balance"]', "10000")
     page.fill('input[name="d_0_min_due"]', "500")
-    page.fill('input[name="d_0_payment"]', "0")
+    # Switch to the Payments tab so d_0_payment is no longer display:none.
+    page.locator('#tabbtn-payments').click()
+    payment_input = page.locator('input[name="d_0_payment"]')
+    payment_input.scroll_into_view_if_needed()
+    payment_input.click()
+    payment_input.fill("0")
     page.click('button[type="submit"]')
     page.wait_for_load_state("networkidle")
 

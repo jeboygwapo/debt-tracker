@@ -16,11 +16,16 @@ def _ensure_some_data(page, base_url):
     page.goto(f"{base_url}/add")
     page.wait_for_load_state("networkidle")
 
-    # Form fields use d_0_balance / d_0_min_due / d_0_payment style
+    # Statement tab is active by default — balance and min_due are visible here.
     page.fill('input[name="month"]', "2026-09")
     page.fill('input[name="d_0_balance"]', "20000")
     page.fill('input[name="d_0_min_due"]', "1000")
-    page.fill('input[name="d_0_payment"]', "1500")
+    # Switch to the Payments tab so d_0_payment is no longer display:none.
+    page.locator('#tabbtn-payments').click()
+    payment_input = page.locator('input[name="d_0_payment"]')
+    payment_input.scroll_into_view_if_needed()
+    payment_input.click()
+    payment_input.fill("1500")
     page.click('button[type="submit"]')
     page.wait_for_load_state("networkidle")
 
