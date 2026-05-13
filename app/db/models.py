@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import sqlalchemy as sa
@@ -22,7 +22,7 @@ class User(Base):
     reset_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     reset_token_expiry: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     income_config: Mapped[Optional[dict]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     debts: Mapped[list["Debt"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     monthly_entries: Mapped[list["MonthlyEntry"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -48,7 +48,7 @@ class Debt(Base):
     allow_prepayment: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa.text('false'))
 
     sort_order: Mapped[int] = mapped_column(default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     user: Mapped["User"] = relationship(back_populates="debts")
     monthly_entries: Mapped[list["MonthlyEntry"]] = relationship(back_populates="debt", cascade="all, delete-orphan")
@@ -73,7 +73,7 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(100))
     type: Mapped[str] = mapped_column(String(32), default="bank", server_default=sa.text("'bank'"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     snapshots: Mapped[list["AccountSnapshot"]] = relationship(back_populates="account", cascade="all, delete-orphan")
 
@@ -88,7 +88,7 @@ class AccountSnapshot(Base):
     balance: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
     source: Mapped[str] = mapped_column(String(16), default="manual", server_default=sa.text("'manual'"))
     statement_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     account: Mapped["Account"] = relationship(back_populates="snapshots")
 
@@ -104,7 +104,7 @@ class Goal(Base):
     target_date: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
     monthly_alloc_php: Mapped[float] = mapped_column(Float, default=0.0, server_default=sa.text("0"))
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=sa.text("0"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class MonthlyEntry(Base):
@@ -133,7 +133,7 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(128), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     reads: Mapped[list["NotificationRead"]] = relationship(back_populates="notification", cascade="all, delete-orphan")
@@ -146,7 +146,7 @@ class NotificationRead(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     notification_id: Mapped[int] = mapped_column(ForeignKey("notifications.id", ondelete="CASCADE"), nullable=False, index=True)
-    read_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
     notification: Mapped["Notification"] = relationship(back_populates="reads")
 
