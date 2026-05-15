@@ -13,6 +13,7 @@ from ..db.crud import (
     clear_reset_token,
     create_user,
     get_user_by_email,
+    get_user_by_id,
     get_user_by_reset_token,
     get_user_by_username,
     get_user_by_verify_token,
@@ -57,6 +58,7 @@ def _session_login(request: Request, user) -> None:
     request.session["username"] = user.username
     request.session["is_admin"] = user.is_admin
     request.session["is_verified"] = user.is_verified
+    request.session["has_email"] = bool(user.email)
     cfg = user.income_config or {}
     request.session["currency_symbol"] = cfg.get("currency_symbol", "₱")
     request.session["income_currency"] = cfg.get("income_currency", "SAR")
@@ -103,8 +105,8 @@ async def login_post(request: Request, db: AsyncSession = Depends(get_db), _: No
         clear_attempts(request)
         _session_login(request, user)
 
-        if settings.email_verification_required and not user.is_verified:
-            return RedirectResponse("/?unverified=1", status_code=303)
+        if settings.email_verification_required and user.email and not user.is_verified:
+            return RedirectResponse("/verify-required", status_code=303)
 
         return RedirectResponse("/", status_code=303)
 
@@ -142,6 +144,14 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
     if not settings.allow_registration:
         return RedirectResponse("/login", status_code=302)
 
+    if ns_is_limited(request, "register"):
+        return templates.TemplateResponse(
+            request, "register.html",
+            {"error": "Too many registration attempts. Please try again later."},
+            status_code=429,
+        )
+    ns_record(request, "register")
+
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
@@ -162,10 +172,11 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
     if email and not EMAIL_RE.match(email):
         return err("Invalid email address.")
 
+    # Single normalized error to prevent username/email enumeration
     if await get_user_by_username(db, username):
-        return err("Username already taken.")
+        return err("That username or email is not available.")
     if email and await get_user_by_email(db, email):
-        return err("Email already registered.")
+        return err("That username or email is not available.")
 
     user = await create_user(db, username=username, password=password, is_admin=False)
 
@@ -183,6 +194,23 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
 
     _session_login(request, user)
     return RedirectResponse("/debts", status_code=303)
+
+
+@router.get("/verify-required", response_class=HTMLResponse)
+async def verify_required(request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse("/login", status_code=302)
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        request.session.clear()
+        return RedirectResponse("/login", status_code=302)
+    if not settings.email_verification_required or not user.email or user.is_verified:
+        return RedirectResponse("/", status_code=302)
+    return templates.TemplateResponse(
+        request, "verify_required.html",
+        {"email": user.email, "msg": request.query_params.get("msg")},
+    )
 
 
 @router.get("/verify/{token}", response_class=HTMLResponse)

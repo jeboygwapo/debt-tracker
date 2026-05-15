@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Debt Tracker — Verify Your Email</title>
+<script>document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark';</script>
+<style>
+:root{--bg:#0f172a;--surface:#1e293b;--border:#334155;--text:#e2e8f0;--muted:#94a3b8}
+[data-theme="light"]{--bg:#f1f5f9;--surface:#ffffff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:var(--surface);border-radius:12px;padding:2.5rem;width:100%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.3);border:1px solid var(--border);text-align:center}
+.icon{font-size:2.5rem;margin-bottom:1rem}
+h2{font-size:1.4rem;margin-bottom:.75rem}
+p{color:var(--muted);font-size:.9rem;line-height:1.55;margin-bottom:1rem}
+strong{color:var(--text)}
+button.btn{display:inline-block;padding:.7rem 1.5rem;background:#6366f1;color:#fff;border:none;border-radius:8px;font-weight:600;font-size:.95rem;cursor:pointer;margin-top:.5rem}
+button.btn:hover{background:#4f46e5}
+.alt{display:block;margin-top:1rem;font-size:.85rem;color:var(--muted);text-decoration:none}
+.alt:hover{color:#6366f1}
+.alert{margin-top:1rem;padding:.6rem .8rem;border-radius:6px;font-size:.85rem}
+.alert-success{background:rgba(34,197,94,.15);color:#86efac;border:1px solid rgba(34,197,94,.3)}
+.theme-toggle{position:fixed;top:14px;right:14px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:.85rem}
+</style>
+</head>
+<body>
+<button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🌙</button>
+<div class="card">
+  <div class="icon">📧</div>
+  <h2>Verify Your Email</h2>
+  <p>We sent a verification link to <strong>{{ email }}</strong>.<br>Please check your inbox to access your account.</p>
+  <form method="POST" action="/verify/resend">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <button type="submit" class="btn">Resend Verification Email</button>
+  </form>
+  {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+  <a class="alt" href="/logout">Sign out</a>
+</div>
+<script>
+function toggleTheme(){
+  const h=document.documentElement,d=h.dataset.theme==='dark';
+  h.dataset.theme=d?'light':'dark';
+  document.getElementById('theme-btn').textContent=d?'☀️':'🌙';
+  localStorage.setItem('theme',h.dataset.theme);
+}
+(function(){
+  const s=localStorage.getItem('theme')||'dark';
+  document.documentElement.dataset.theme=s;
+  document.addEventListener('DOMContentLoaded',()=>{
+    const b=document.getElementById('theme-btn');
+    if(b)b.textContent=s==='dark'?'🌙':'☀️';
+  });
+})();
+</script>
+</body>
+</html>

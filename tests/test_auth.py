@@ -111,7 +111,7 @@ async def test_register_duplicate_username(client):
             "csrf_token": token,
         })
         assert r.status_code == 400
-        assert "taken" in r.text.lower()
+        assert "not available" in r.text.lower()
     finally:
         os.environ["ALLOW_REGISTRATION"] = "false"
 
@@ -581,3 +581,229 @@ async def test_reset_password_post_success(client):
         user = await get_user_by_username(db, "testadmin")
         await update_user_password(db, user, "TestPassword123!")
         break
+
+
+# ── Registration security: rate limit + enumeration ─────────────────────────
+
+
+@pytest.mark.anyio
+async def test_register_rate_limit_429_after_5(client):
+    """6th register attempt within window must return 429.
+
+    Uses invalid passwords so the user isn't logged in between attempts —
+    rate limit fires regardless of validation outcome (records every POST).
+    """
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    try:
+        for i in range(5):
+            token = await get_csrf_token(client, "/register")
+            r = await client.post("/register", data={
+                "username": f"ratelimit{i}",
+                "password": "short",
+                "confirm_password": "short",
+                "csrf_token": token,
+            })
+            assert r.status_code == 400
+
+        token = await get_csrf_token(client, "/register")
+        r6 = await client.post("/register", data={
+            "username": "ratelimit6",
+            "password": "short",
+            "confirm_password": "short",
+            "csrf_token": token,
+        })
+        assert r6.status_code == 429
+        assert "too many" in r6.text.lower()
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+
+
+@pytest.mark.anyio
+async def test_register_duplicate_email_normalized(client):
+    """Duplicate email returns same vague error as duplicate username (no enumeration).
+
+    Seeds a user with email directly in DB (bypasses register flow which only
+    persists email when RESEND_API_KEY is set), then attempts to register
+    a second user with the same email.
+    """
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import create_user, set_user_email, delete_user, get_user_by_email
+    from datetime import datetime, timedelta, timezone
+
+    seed_id = None
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    try:
+        async with AsyncSessionLocal() as db:
+            seed = await create_user(db, username="enumseed", password="EnumPassword123!", is_admin=False)
+            seed_id = seed.id
+            future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=24)
+            await set_user_email(db, seed, "enumcollide@example.com", "tok", future)
+
+        token = await get_csrf_token(client, "/register")
+        r = await client.post("/register", data={
+            "username": "differentuser",
+            "password": "ValidPassword123!",
+            "confirm_password": "ValidPassword123!",
+            "email": "enumcollide@example.com",
+            "csrf_token": token,
+        })
+        assert r.status_code == 400
+        body = r.text.lower()
+        assert "not available" in body
+        assert "already registered" not in body
+        assert "email already" not in body
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+        if seed_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, seed_id)
+
+
+# ── Verification wall middleware ───────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_verify_required_redirects_unverified_user():
+    """When EMAIL_VERIFICATION_REQUIRED=true, unverified user with email is walled off."""
+    from httpx import ASGITransport, AsyncClient
+    from app import create_app
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import create_user, set_user_email, delete_user
+    from datetime import datetime, timedelta, timezone
+
+    prev = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+
+    user_id = None
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await create_user(db, username="walltest", password="WallPassword123!", is_admin=False)
+            user_id = user.id
+            future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=24)
+            await set_user_email(db, user, "walltest@example.com", "verifytoken123", future)
+
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as c:
+            token = await get_csrf_token(c, "/login")
+            login = await c.post("/login", data={
+                "username": "walltest",
+                "password": "WallPassword123!",
+                "csrf_token": token,
+            })
+            assert login.status_code == 303
+            assert login.headers["location"] == "/verify-required"
+
+            r = await c.get("/")
+            assert r.status_code == 302
+            assert r.headers["location"] == "/verify-required"
+
+            r2 = await c.get("/debts")
+            assert r2.status_code == 302
+            assert r2.headers["location"] == "/verify-required"
+
+            r3 = await c.get("/verify-required")
+            assert r3.status_code == 200
+            assert "walltest@example.com" in r3.text
+
+            r4 = await c.get("/logout")
+            assert r4.status_code == 303
+    finally:
+        if prev is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev
+        if user_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, user_id)
+
+
+@pytest.mark.anyio
+async def test_verify_required_no_block_when_setting_off():
+    """When EMAIL_VERIFICATION_REQUIRED=false (default), unverified user can use the app."""
+    from httpx import ASGITransport, AsyncClient
+    from app import create_app
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import create_user, set_user_email, delete_user
+    from datetime import datetime, timedelta, timezone
+
+    prev = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "false"
+
+    user_id = None
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await create_user(db, username="nowalltest", password="WallPassword123!", is_admin=False)
+            user_id = user.id
+            future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=24)
+            await set_user_email(db, user, "nowall@example.com", "tok", future)
+
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as c:
+            token = await get_csrf_token(c, "/login")
+            login = await c.post("/login", data={
+                "username": "nowalltest",
+                "password": "WallPassword123!",
+                "csrf_token": token,
+            })
+            assert login.status_code == 303
+            assert login.headers["location"] == "/"
+    finally:
+        if prev is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev
+        if user_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, user_id)
+
+
+@pytest.mark.anyio
+async def test_verify_required_no_block_for_users_without_email():
+    """Users who registered without email are not blocked even when verification required."""
+    from httpx import ASGITransport, AsyncClient
+    from app import create_app
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import create_user, delete_user
+
+    prev = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+
+    user_id = None
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await create_user(db, username="noemailuser", password="WallPassword123!", is_admin=False)
+            user_id = user.id
+
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as c:
+            token = await get_csrf_token(c, "/login")
+            login = await c.post("/login", data={
+                "username": "noemailuser",
+                "password": "WallPassword123!",
+                "csrf_token": token,
+            })
+            assert login.status_code == 303
+            assert login.headers["location"] == "/"
+
+            r = await c.get("/", follow_redirects=False)
+            assert r.status_code == 200
+    finally:
+        if prev is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev
+        if user_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, user_id)

@@ -47,6 +47,52 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class VerificationWallMiddleware(BaseHTTPMiddleware):
+    """Block logged-in unverified users from protected routes when EMAIL_VERIFICATION_REQUIRED=true.
+
+    Only triggers when:
+      - settings.email_verification_required is True
+      - User has session (user_id) AND has_email AND not is_verified
+      - Path is not in EXEMPT_PREFIXES
+    Redirects to /verify-required so the user can resend the verification email.
+    """
+
+    EXEMPT_PREFIXES = (
+        "/verify-required",
+        "/verify",
+        "/logout",
+        "/api/healthz",
+        "/static",
+        "/welcome",
+        "/login",
+        "/forgot-password",
+        "/reset-password",
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        if not settings.email_verification_required:
+            return await call_next(request)
+
+        path = request.url.path
+        if any(path.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return await call_next(request)
+
+        try:
+            session = request.session
+        except (AssertionError, AttributeError):
+            return await call_next(request)
+
+        if (
+            session.get("user_id")
+            and session.get("has_email")
+            and not session.get("is_verified", True)
+        ):
+            from starlette.responses import RedirectResponse
+            return RedirectResponse("/verify-required", status_code=302)
+
+        return await call_next(request)
+
+
 def _init_sentry() -> None:
     dsn = os.environ.get("SENTRY_DSN", "")
     if not dsn:
@@ -70,6 +116,9 @@ def create_app() -> FastAPI:
 
     is_prod = os.environ.get("APP_ENV", "development").lower() == "production"
     app = FastAPI(title="Debt Tracker", docs_url=None if is_prod else "/docs")
+    # Order matters: middleware added FIRST is innermost (runs after outer ones).
+    # VerificationWall reads request.session, so it must be inner to SessionMiddleware.
+    app.add_middleware(VerificationWallMiddleware)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.secret_key,

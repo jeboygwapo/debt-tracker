@@ -61,6 +61,19 @@ def app(setup_test_db):
     return _create_app()
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Clear in-memory rate-limit state between tests so order doesn't matter."""
+    from app.ratelimit import _attempts, _ns_attempts, _lock
+    with _lock:
+        _attempts.clear()
+        _ns_attempts.clear()
+    yield
+    with _lock:
+        _attempts.clear()
+        _ns_attempts.clear()
+
+
 @pytest.fixture
 async def client(app):
     async with AsyncClient(
