@@ -139,7 +139,10 @@ async def register_get(request: Request):
         return RedirectResponse("/login", status_code=302)
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "register.html", {"error": None})
+    return templates.TemplateResponse(request, "register.html", {
+        "error": None,
+        "email_required": settings.email_verification_required,
+    })
 
 
 @router.post("/register")
@@ -150,7 +153,10 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
     if ns_is_limited(request, "register"):
         return templates.TemplateResponse(
             request, "register.html",
-            {"error": "Too many registration attempts. Please try again later."},
+            {
+                "error": "Too many registration attempts. Please try again later.",
+                "email_required": settings.email_verification_required,
+            },
             status_code=429,
         )
     ns_record(request, "register")
@@ -163,7 +169,9 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
 
     def err(msg):
         return templates.TemplateResponse(
-            request, "register.html", {"error": msg}, status_code=400
+            request, "register.html",
+            {"error": msg, "email_required": settings.email_verification_required},
+            status_code=400,
         )
 
     if not username or len(username) < 3:
