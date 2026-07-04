@@ -2,6 +2,7 @@ from fastapi import Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .config import settings
 from .db.base import get_db
 from .db.crud import get_user_by_id
 from .db.models import User
@@ -21,6 +22,11 @@ async def get_current_user(
     user = await get_user_by_id(db, user_id)
     if not user:
         request.session.clear()
+        raise NotAuthenticated()
+
+    if settings.email_verification_required and user.email and not user.is_verified:
+        request.session.clear()
+        request.session["pending_verify_user_id"] = user.id
         raise NotAuthenticated()
 
     # Sync display prefs from DB on every request so multi-session and

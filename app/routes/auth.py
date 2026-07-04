@@ -12,6 +12,7 @@ from ..db.base import get_db
 from ..db.crud import (
     clear_reset_token,
     create_user,
+    delete_user,
     get_user_by_email,
     get_user_by_id,
     get_user_by_reset_token,
@@ -103,11 +104,13 @@ async def login_post(request: Request, db: AsyncSession = Depends(get_db), _: No
     user = await get_user_by_username(db, username)
     if user and verify_password(password, user.password_hash):
         clear_attempts(request)
-        _session_login(request, user)
 
         if settings.email_verification_required and user.email and not user.is_verified:
+            request.session.clear()
+            request.session["pending_verify_user_id"] = user.id
             return RedirectResponse("/verify-required", status_code=303)
 
+        _session_login(request, user)
         return RedirectResponse("/", status_code=303)
 
     count = record_failure(request)
@@ -172,6 +175,12 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
     if email and not EMAIL_RE.match(email):
         return err("Invalid email address.")
 
+    verify_required = settings.email_verification_required
+    if verify_required and not email:
+        return err("Email address is required.")
+    if verify_required and not settings.resend_api_key:
+        return err("Signup is temporarily unavailable. Please try again later.")
+
     # Single normalized error to prevent username/email enumeration
     if await get_user_by_username(db, username):
         return err("That username or email is not available.")
@@ -190,7 +199,13 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
             await send_verification_email(email, username, token, base_url)
             await _record_email_sent(db, user)
         except EmailError:
-            pass  # don't block registration if email fails
+            if verify_required:
+                await delete_user(db, user.id)
+                return err("Could not send verification email. Please try again.")
+
+    if verify_required and user.email and not user.is_verified:
+        request.session["pending_verify_user_id"] = user.id
+        return RedirectResponse("/verify-required", status_code=303)
 
     _session_login(request, user)
     return RedirectResponse("/debts", status_code=303)
@@ -198,7 +213,7 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
 
 @router.get("/verify-required", response_class=HTMLResponse)
 async def verify_required(request: Request, db: AsyncSession = Depends(get_db)):
-    user_id = request.session.get("user_id")
+    user_id = request.session.get("user_id") or request.session.get("pending_verify_user_id")
     if not user_id:
         return RedirectResponse("/login", status_code=302)
     user = await get_user_by_id(db, user_id)
@@ -206,7 +221,9 @@ async def verify_required(request: Request, db: AsyncSession = Depends(get_db)):
         request.session.clear()
         return RedirectResponse("/login", status_code=302)
     if not settings.email_verification_required or not user.email or user.is_verified:
-        return RedirectResponse("/", status_code=302)
+        request.session.pop("pending_verify_user_id", None)
+        target = "/" if request.session.get("user_id") else "/login"
+        return RedirectResponse(target, status_code=302)
     return templates.TemplateResponse(
         request, "verify_required.html",
         {"email": user.email, "msg": request.query_params.get("msg")},
@@ -227,23 +244,28 @@ async def verify_email(token: str, request: Request, db: AsyncSession = Depends(
 
     if request.session.get("user_id") == user.id:
         request.session["is_verified"] = True
+    if request.session.get("pending_verify_user_id") == user.id:
+        request.session.pop("pending_verify_user_id", None)
 
     return templates.TemplateResponse(request, "verify.html", {"status": "success"})
 
 
 @router.post("/verify/resend")
 async def resend_verification(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
-    user_id = request.session.get("user_id")
+    pending_id = request.session.get("pending_verify_user_id")
+    user_id = request.session.get("user_id") or pending_id
     if not user_id:
         return RedirectResponse("/login", status_code=302)
+
+    redirect_target = "/verify-required" if pending_id else "/settings"
 
     from ..db.crud import get_user_by_id
     user = await get_user_by_id(db, user_id)
     if not user or not user.email or user.is_verified:
-        return RedirectResponse("/settings?msg=Nothing+to+resend", status_code=303)
+        return RedirectResponse(f"{redirect_target}?msg=Nothing+to+resend", status_code=303)
 
     if not _can_send_email(user):
-        return RedirectResponse("/settings?msg=Please+wait+5+minutes+before+resending", status_code=303)
+        return RedirectResponse(f"{redirect_target}?msg=Please+wait+5+minutes+before+resending", status_code=303)
 
     token = secrets.token_urlsafe(32)
     expiry = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=VERIFY_TOKEN_TTL_HOURS)
@@ -258,7 +280,7 @@ async def resend_verification(request: Request, db: AsyncSession = Depends(get_d
     except EmailError:
         msg = "Failed+to+send+email.+Check+RESEND_API_KEY"
 
-    return RedirectResponse(f"/settings?msg={msg}", status_code=303)
+    return RedirectResponse(f"{redirect_target}?msg={msg}", status_code=303)
 
 
 @router.get("/forgot-password", response_class=HTMLResponse)

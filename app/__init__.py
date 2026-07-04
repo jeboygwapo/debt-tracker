@@ -90,6 +90,10 @@ class VerificationWallMiddleware(BaseHTTPMiddleware):
             from starlette.responses import RedirectResponse
             return RedirectResponse("/verify-required", status_code=302)
 
+        if session.get("pending_verify_user_id"):
+            from starlette.responses import RedirectResponse
+            return RedirectResponse("/verify-required", status_code=302)
+
         return await call_next(request)
 
 

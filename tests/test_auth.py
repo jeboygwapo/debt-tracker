@@ -766,6 +766,187 @@ async def test_verify_required_no_block_when_setting_off():
 
 
 @pytest.mark.anyio
+async def test_register_requires_email_when_verify_required(client):
+    """When EMAIL_VERIFICATION_REQUIRED=true, register without email → 400."""
+    prev = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+    try:
+        token = await get_csrf_token(client, "/register")
+        r = await client.post("/register", data={
+            "username": "needsemailuser",
+            "password": "ValidPassword123!",
+            "confirm_password": "ValidPassword123!",
+            "csrf_token": token,
+        })
+        assert r.status_code == 400
+        assert "Email" in r.text or "email" in r.text
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+        if prev is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev
+
+
+@pytest.mark.anyio
+async def test_register_requires_resend_key_when_verify_required(client):
+    """When EMAIL_VERIFICATION_REQUIRED=true but no RESEND_API_KEY, register → 400."""
+    prev_verify = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    prev_key = os.environ.get("RESEND_API_KEY")
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+    os.environ.pop("RESEND_API_KEY", None)
+    try:
+        token = await get_csrf_token(client, "/register")
+        r = await client.post("/register", data={
+            "username": "nokeyuser",
+            "password": "ValidPassword123!",
+            "confirm_password": "ValidPassword123!",
+            "email": "nokey@example.com",
+            "csrf_token": token,
+        })
+        assert r.status_code == 400
+        assert "temporarily unavailable" in r.text.lower()
+    finally:
+        os.environ["ALLOW_REGISTRATION"] = "false"
+        if prev_verify is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev_verify
+        if prev_key is not None:
+            os.environ["RESEND_API_KEY"] = prev_key
+
+
+@pytest.mark.anyio
+async def test_unverified_login_partial_session_only():
+    """Unverified login sets pending_verify_user_id, not user_id."""
+    from httpx import ASGITransport, AsyncClient
+    from app import create_app
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import create_user, set_user_email, delete_user
+    from datetime import datetime, timedelta, timezone
+
+    prev = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+
+    user_id = None
+    try:
+        async with AsyncSessionLocal() as db:
+            user = await create_user(db, username="partialsess", password="WallPassword123!", is_admin=False)
+            user_id = user.id
+            future = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=24)
+            await set_user_email(db, user, "partial@example.com", "toktok", future)
+
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as c:
+            token = await get_csrf_token(c, "/login")
+            login = await c.post("/login", data={
+                "username": "partialsess",
+                "password": "WallPassword123!",
+                "csrf_token": token,
+            })
+            assert login.status_code == 303
+            assert login.headers["location"] == "/verify-required"
+
+            # Any protected route redirects to /verify-required via middleware
+            r = await c.get("/settings")
+            assert r.status_code == 302
+            assert r.headers["location"] == "/verify-required"
+    finally:
+        if prev is None:
+            os.environ.pop("EMAIL_VERIFICATION_REQUIRED", None)
+        else:
+            os.environ["EMAIL_VERIFICATION_REQUIRED"] = prev
+        if user_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, user_id)
+
+
+@pytest.mark.anyio
+async def test_full_verify_gate_happy_path():
+    """Register → verify-required → click token link → login → dashboard."""
+    from httpx import ASGITransport, AsyncClient
+    from unittest.mock import AsyncMock, patch
+    from app import create_app
+    from app.db.base import AsyncSessionLocal
+    from app.db.crud import get_user_by_username, delete_user
+
+    prev_verify = os.environ.get("EMAIL_VERIFICATION_REQUIRED")
+    prev_reg = os.environ.get("ALLOW_REGISTRATION")
+    prev_key = os.environ.get("RESEND_API_KEY")
+    os.environ["ALLOW_REGISTRATION"] = "true"
+    os.environ["EMAIL_VERIFICATION_REQUIRED"] = "true"
+    os.environ["RESEND_API_KEY"] = "re_test_dummy"
+
+    user_id = None
+    try:
+        app = create_app()
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://test",
+            follow_redirects=False,
+        ) as c:
+            with patch("app.routes.auth.send_verification_email", new=AsyncMock()):
+                token = await get_csrf_token(c, "/register")
+                reg = await c.post("/register", data={
+                    "username": "happypath",
+                    "password": "HappyPass1234!",
+                    "confirm_password": "HappyPass1234!",
+                    "email": "happy@example.com",
+                    "csrf_token": token,
+                })
+            assert reg.status_code == 303
+            assert reg.headers["location"] == "/verify-required"
+
+            # Protected route → wall
+            r = await c.get("/settings")
+            assert r.status_code == 302
+            assert r.headers["location"] == "/verify-required"
+
+            # Pull real verify token from DB and hit link
+            async with AsyncSessionLocal() as db:
+                user = await get_user_by_username(db, "happypath")
+                user_id = user.id
+                verify_token = user.verify_token
+            assert verify_token
+
+            v = await c.get(f"/verify/{verify_token}")
+            assert v.status_code == 200
+            assert "verified" in v.text.lower()
+
+            # Log in again → dashboard
+            login_csrf = await get_csrf_token(c, "/login")
+            login = await c.post("/login", data={
+                "username": "happypath",
+                "password": "HappyPass1234!",
+                "csrf_token": login_csrf,
+            })
+            assert login.status_code == 303
+            assert login.headers["location"] == "/"
+
+            home = await c.get("/")
+            assert home.status_code == 200
+    finally:
+        for key, prev in (
+            ("ALLOW_REGISTRATION", prev_reg),
+            ("EMAIL_VERIFICATION_REQUIRED", prev_verify),
+            ("RESEND_API_KEY", prev_key),
+        ):
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
+        if user_id is not None:
+            async with AsyncSessionLocal() as db:
+                await delete_user(db, user_id)
+
+
+@pytest.mark.anyio
 async def test_verify_required_no_block_for_users_without_email():
     """Users who registered without email are not blocked even when verification required."""
     from httpx import ASGITransport, AsyncClient
