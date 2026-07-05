@@ -30,6 +30,9 @@ button.btn:hover{background:#4f46e5}
   <div class="icon">📧</div>
   <h2>Verify Your Email</h2>
   <p>We sent a verification link to <strong>{{ email }}</strong>.<br>Please check your inbox to access your account.</p>
+  <div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.35);color:var(--text);border-radius:8px;padding:.7rem .85rem;font-size:.82rem;line-height:1.55;margin-bottom:1rem;text-align:left">
+    <strong>⚠ Check spam / junk folder</strong> if you don't see it within a minute. New sender domains often land there. Mark as "Not spam" to help future emails arrive normally.
+  </div>
   <form method="POST" action="/verify/resend">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <button type="submit" class="btn">Resend Verification Email</button>

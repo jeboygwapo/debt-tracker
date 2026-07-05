@@ -7,6 +7,14 @@ logger = logging.getLogger("app.email")
 
 RESEND_API_URL = "https://api.resend.com/emails"
 FROM_ADDRESS = os.getenv("RESEND_FROM", "Debt Tracker <noreply@personal-debt-tracker.fly.dev>")
+REPLY_TO_ADDRESS = os.getenv("RESEND_REPLY_TO", "")
+
+
+def _payload(to_email: str, subject: str, html: str) -> dict:
+    body = {"from": FROM_ADDRESS, "to": [to_email], "subject": subject, "html": html}
+    if REPLY_TO_ADDRESS:
+        body["reply_to"] = REPLY_TO_ADDRESS
+    return body
 
 
 class EmailError(Exception):
@@ -38,7 +46,7 @@ async def send_verification_email(to_email: str, username: str, token: str, base
             resp = await client.post(
                 RESEND_API_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"from": FROM_ADDRESS, "to": [to_email], "subject": "Verify your Debt Tracker email", "html": html},
+                json=_payload(to_email, "Verify your Debt Tracker email", html),
             )
         except httpx.HTTPError as e:
             logger.error("Resend verify request failed: %s (from=%s to=%s)", e, FROM_ADDRESS, to_email)
@@ -73,7 +81,7 @@ async def send_password_reset_email(to_email: str, username: str, token: str, ba
             resp = await client.post(
                 RESEND_API_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"from": FROM_ADDRESS, "to": [to_email], "subject": "Reset your Debt Tracker password", "html": html},
+                json=_payload(to_email, "Reset your Debt Tracker password", html),
             )
         except httpx.HTTPError as e:
             logger.error("Resend reset request failed: %s (from=%s to=%s)", e, FROM_ADDRESS, to_email)
