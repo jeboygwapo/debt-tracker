@@ -947,6 +947,57 @@ async def test_full_verify_gate_happy_path():
 
 
 @pytest.mark.anyio
+async def test_reset_password_scan_rate_limit(client):
+    """5 invalid GET /reset-password/{token} hits → 6th returns 429."""
+    from app.ratelimit import _ns_attempts, _lock
+
+    with _lock:
+        for key in list(_ns_attempts.keys()):
+            if key[0] == "reset-password-scan":
+                _ns_attempts.pop(key, None)
+
+    try:
+        for i in range(5):
+            r = await client.get(f"/reset-password/bogus_scan_{i}")
+            assert r.status_code == 200
+        r6 = await client.get("/reset-password/bogus_scan_6")
+        assert r6.status_code == 429
+    finally:
+        with _lock:
+            for key in list(_ns_attempts.keys()):
+                if key[0] == "reset-password-scan":
+                    _ns_attempts.pop(key, None)
+
+
+@pytest.mark.anyio
+async def test_reset_password_scan_limit_blocks_post(client):
+    """Scan limit hit on POST returns 429 without touching DB."""
+    from app.ratelimit import _ns_attempts, _lock
+
+    with _lock:
+        for key in list(_ns_attempts.keys()):
+            if key[0] == "reset-password-scan":
+                _ns_attempts.pop(key, None)
+
+    try:
+        for i in range(5):
+            await client.get(f"/reset-password/scan_pre_{i}")
+
+        csrf = await get_csrf_token(client, "/login")
+        r = await client.post("/reset-password/anytoken", data={
+            "password": "SomePassword123!",
+            "confirm_password": "SomePassword123!",
+            "csrf_token": csrf,
+        })
+        assert r.status_code == 429
+    finally:
+        with _lock:
+            for key in list(_ns_attempts.keys()):
+                if key[0] == "reset-password-scan":
+                    _ns_attempts.pop(key, None)
+
+
+@pytest.mark.anyio
 async def test_verify_required_no_block_for_users_without_email():
     """Users who registered without email are not blocked even when verification required."""
     from httpx import ASGITransport, AsyncClient

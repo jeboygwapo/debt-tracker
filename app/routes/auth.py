@@ -339,25 +339,38 @@ async def forgot_password_post(request: Request, db: AsyncSession = Depends(get_
 
 @router.get("/reset-password/{token}", response_class=HTMLResponse)
 async def reset_password_get(token: str, request: Request, db: AsyncSession = Depends(get_db)):
+    if ns_is_limited(request, "reset-password-scan"):
+        return templates.TemplateResponse(
+            request, "reset_password.html",
+            {"status": "invalid", "token": token},
+            status_code=429,
+        )
     user = await get_user_by_reset_token(db, token)
     if not user:
+        ns_record(request, "reset-password-scan")
         return templates.TemplateResponse(request, "reset_password.html", {"status": "invalid", "token": token})
     if user.reset_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_token_expiry:
+        ns_record(request, "reset-password-scan")
         return templates.TemplateResponse(request, "reset_password.html", {"status": "expired", "token": token})
     return templates.TemplateResponse(request, "reset_password.html", {"status": "form", "token": token, "error": None})
 
 
 @router.post("/reset-password/{token}")
 async def reset_password_post(token: str, request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    if ns_is_limited(request, "reset-password-scan"):
+        return templates.TemplateResponse(
+            request, "reset_password.html",
+            {"status": "invalid", "token": token},
+            status_code=429,
+        )
     user = await get_user_by_reset_token(db, token)
     if not user:
+        ns_record(request, "reset-password-scan")
         return templates.TemplateResponse(request, "reset_password.html", {"status": "invalid", "token": token})
     if user.reset_token_expiry and datetime.now(timezone.utc).replace(tzinfo=None) > user.reset_token_expiry:
+        ns_record(request, "reset-password-scan")
         return templates.TemplateResponse(request, "reset_password.html", {"status": "expired", "token": token})
 
-    # Rate limit applies only to form validation failures — invalid/expired token
-    # branches above terminate before this point and do not consume the bucket.
-    # Token entropy (256-bit) makes POST enumeration of unknown tokens infeasible.
     if ns_is_limited(request, "reset-password"):
         return templates.TemplateResponse(
             request, "reset_password.html",
