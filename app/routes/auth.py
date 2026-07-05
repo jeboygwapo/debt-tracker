@@ -70,7 +70,9 @@ def _session_login(request: Request, user) -> None:
 async def landing(request: Request):
     if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse(request, "landing.html", {})
+    return templates.TemplateResponse(request, "landing.html", {
+        "allow_registration": settings.allow_registration,
+    })
 
 
 @router.get("/login", response_class=HTMLResponse)
