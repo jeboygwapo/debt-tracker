@@ -205,10 +205,12 @@ async def register_post(request: Request, db: AsyncSession = Depends(get_db), _:
         await set_user_email(db, user, email, token, expiry)
         await db.refresh(user)
         try:
-            base_url = str(request.base_url).rstrip("/")
+            base_url = (settings.app_base_url or str(request.base_url)).rstrip("/")
             await send_verification_email(email, username, token, base_url)
             await _record_email_sent(db, user)
-        except EmailError:
+        except EmailError as e:
+            import logging
+            logging.getLogger("app.auth").error("Verification email failed for %s: %s", email, e)
             if verify_required:
                 await delete_user(db, user.id)
                 return err("Could not send verification email. Please try again.")
