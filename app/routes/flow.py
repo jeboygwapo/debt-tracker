@@ -1,12 +1,14 @@
 import json
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..csrf import validate_csrf
 from ..db.adapter import build_data_dict
 from ..db.base import get_db
-from ..db.crud import get_ai_cache, get_ai_daily_count, get_all_entries, get_debts, get_expenses, get_goals
+from ..db.crud import get_ai_cache, get_ai_daily_count, get_all_entries, get_debts, get_expenses, get_goal_by_id, get_goals, update_goal
 from ..dependencies import NotAuthenticated, get_current_user
 from ..services.planner import _active_expense_sar, latest_month
 from ..templating import templates
@@ -18,6 +20,45 @@ def _current_month_str() -> str:
     from datetime import date
     today = date.today()
     return f"{today.year}-{today.month:02d}"
+
+
+def _surplus_suggestions(goals, surplus_php: float) -> list[dict]:
+    if surplus_php <= 0 or not goals:
+        return []
+    active = [g for g in goals if float(g.monthly_alloc_php or 0) > 0]
+    pool = active or goals
+    if not pool:
+        return []
+    even = round(surplus_php / len(pool), 2)
+    return [{"id": g.id, "name": g.name, "suggested": even} for g in pool]
+
+
+@router.post("/flow/allocate")
+async def flow_allocate(request: Request, db: AsyncSession = Depends(get_db), _: None = Depends(validate_csrf)):
+    try:
+        user = await get_current_user(request, db)
+    except NotAuthenticated:
+        return RedirectResponse("/welcome", status_code=302)
+
+    form = await request.form()
+    try:
+        goal_id = int(form.get("goal_id", "0"))
+        amount = float(form.get("amount", "0"))
+    except (TypeError, ValueError):
+        return RedirectResponse(f"/flow?msg={quote('Invalid input')}", status_code=303)
+
+    if amount <= 0:
+        return RedirectResponse(f"/flow?msg={quote('Amount must be positive')}", status_code=303)
+
+    goal = await get_goal_by_id(db, goal_id, user.id)
+    if not goal:
+        return RedirectResponse(f"/flow?msg={quote('Goal not found')}", status_code=303)
+
+    new_current = round(float(goal.current_php or 0) + amount, 2)
+    await update_goal(db, goal, current_php=new_current)
+
+    msg = f"Allocated {amount:,.2f} to {goal.name}"
+    return RedirectResponse(f"/flow?msg={quote(msg)}", status_code=303)
 
 
 @router.get("/flow", response_class=HTMLResponse)
@@ -108,6 +149,7 @@ async def flow_get(request: Request, db: AsyncSession = Depends(get_db)):
         ai_remaining = ai_limit
 
     return templates.TemplateResponse(request, "flow.html", {
+        "surplus_suggestions": _surplus_suggestions(goals, surplus_php),
         "request": request,
         "active": "flow",
         "income_php": income_php,

@@ -88,6 +88,25 @@
     <a href="/goals" style="color:#6366f1">Go to Goals →</a>
   </p>
   {% endif %}
+
+  {% if surplus_suggestions %}
+  <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+    <h4 style="font-size:.9rem;margin-bottom:10px">Allocate Surplus Now</h4>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:10px">
+      Move real money into a goal's current balance. Updates goal progress immediately.
+    </p>
+    {% for s in surplus_suggestions %}
+    <form method="POST" action="/flow/allocate" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <input type="hidden" name="goal_id" value="{{ s.id }}">
+      <span style="min-width:140px;font-size:.85rem">{{ s.name }}</span>
+      <input type="number" name="amount" min="1" step="0.01" value="{{ '{:.2f}'.format(s.suggested) }}"
+             style="max-width:130px;padding:6px 8px;background:var(--inp);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.85rem">
+      <button type="submit" class="qbtn" style="padding:6px 12px;font-size:.8rem">Allocate</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
